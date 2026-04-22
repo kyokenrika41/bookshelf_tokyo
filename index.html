@@ -6,7 +6,7 @@
 <title>📚 本棚</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.4/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 :root{
   --bg:#F3EEE5;--bgc:#FDFAF5;--text:#1C1C1C;--mid:#4A4A4A;--muted:#8A8A8A;
@@ -136,6 +136,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .info-box{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--mid);line-height:2}
 .gh-box{background:#EEF4FF;border:1px solid #BDD0F5;border-radius:var(--rs);padding:14px;margin-bottom:12px}
 .gh-box-title{font-size:13px;font-weight:600;color:#1a3a6a;margin-bottom:10px}
+/* PDF list */
+.pdf-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg);border:1px solid var(--bdl);border-radius:6px;margin-bottom:4px;font-size:12px;color:var(--mid)}
+.pdf-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdf-item-pg{flex-shrink:0;font-size:11px;color:var(--ac);font-weight:600}
+.pdf-item-del{width:18px;height:18px;border:none;background:rgba(192,57,43,.15);color:var(--warn);border-radius:50%;cursor:pointer;font-size:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.pdf-item-del:hover{background:rgba(192,57,43,.3)}
 /* Spin */
 .spin{animation:spin 1s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -275,10 +281,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
         <div class="fg">
           <label class="fl">⑥ 本文PDF <span style="color:var(--warn)" id="pdf-req">*</span><span id="pdf-opt" style="font-size:12px;color:var(--muted);display:none">（変更時のみ）</span></label>
           <div class="dz" id="pdf-dz" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDropPdf(event,this)" onclick="document.getElementById('pdf-f').click()">
-            <p>📄 PDFをドロップまたはクリック</p><small>テキスト抽出・OCR(画像PDF)対応</small>
+            <p>📄 PDFをドロップまたはクリック（複数可）</p><small>追加するたびにマージされます・OCR対応</small>
           </div>
-          <input type="file" id="pdf-f" accept=".pdf" style="display:none" onchange="onPdfFile(this)">
-          <div id="pdf-status" style="font-size:12px;margin-top:6px;color:var(--ac);display:none"></div>
+          <input type="file" id="pdf-f" accept=".pdf" multiple style="display:none" onchange="onPdfFile(this)">
+          <div id="pdf-list" style="margin-top:8px"></div>
+          <div id="pdf-status" style="font-size:12px;margin-top:4px;color:var(--ac);display:none"></div>
         </div>
         <div class="fg">
           <label class="fl">⑦ 目次PDF（任意）</label>
@@ -414,6 +421,7 @@ let _covers={};   // bookId -> dataURL
 let _indexes={};  // bookId -> [{p,t}]
 let _editSid=null,_curSid='all',_filterQ='',_bpBid=null;
 let _tmpCover=null,_tmpToc=null,_tmpIdx=null;
+let _tmpPdfFiles=[]; // 複数PDF管理 [{name, pages}]
 let _editBid=null;
 
 /* =============================================
@@ -635,117 +643,69 @@ function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 async function processPdf(file){
   const buf=await file.arrayBuffer();
   const u8=new Uint8Array(buf);
-  showPdfMo('PDF読み込み中...',0.05);
+  showPdfMo('テキスト抽出中...',0);
   try{
     const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
-    const n=doc.numPages;
-    const pages=[];let total=0;
-    setPdfMo(`ページ数: ${n}ページ — テキスト抽出中...`,0.1);
+    const n=doc.numPages;const pages=[];let total=0;
     for(let i=1;i<=n;i++){
-      setPdfMo(`テキスト抽出中 ${i}/${n}ページ`,0.1+i/n*0.5);
-      const pg=await doc.getPage(i);
-      const tc=await pg.getTextContent();
+      setPdfMo(`テキスト抽出中 ${i}/${n}ページ`,i/n*0.6);
+      const pg=await doc.getPage(i);const tc=await pg.getTextContent();
       const txt=tc.items.map(x=>x.str).join(' ').trim();
-      pages.push({p:i,t:txt});
-      total+=txt.length;
+      pages.push({p:i,t:txt});total+=txt.length;
     }
     doc.destroy();
-    const avg=n>0?total/n:0;
+    const avg=total/n;
     if(avg<30){
-      // 画像PDF検出 → OCR
-      setPdfMo(`📷 画像PDFを検出（平均${Math.round(avg)}文字/ページ）→ OCR開始`,0.6);
+      // 画像PDF → OCR
+      setPdfMo(`画像PDFを検出 — OCR開始 (日本語+英語)`,0.6);
       const ocrPages=await ocrPdf(u8,n);
-      hidePdfMo();
-      return ocrPages.length>0?ocrPages:pages; // OCR失敗時はテキストなしで登録
+      hidePdfMo();return ocrPages;
     }
-    hidePdfMo();
-    return pages;
-  }catch(e){
-    hidePdfMo();
-    console.error('processPdf error',e);
-    toast('❌ PDF読み込みエラー: '+e.message);
-    return[];
-  }
+    hidePdfMo();return pages;
+  }catch(e){hidePdfMo();console.error(e);return[];}
 }
 
 async function ocrPdf(u8,pageCount){
-  // Tesseract.js v4 API
   let worker;
   try{
-    setPdfMo('OCR準備中（日本語辞書のダウンロード中…初回は時間がかかります）',0.6);
-    worker=await Tesseract.createWorker({
-      logger:m=>{
-        if(m.status==='recognizing text'){
-          const pct=0.6+m.progress*0.4;
-          setPdfMo(`OCR処理中 (${Math.round(m.progress*100)}%)`,pct);
-        } else if(m.status){
-          setPdfMo(m.status,0.62);
-        }
-      }
+    worker=await Tesseract.createWorker('jpn+eng',1,{
+      workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+      langPath:'https://tessdata.projectnaptha.com/4.0.0',
+      corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+      logger:()=>{}
     });
-    await worker.loadLanguage('jpn+eng');
-    await worker.initialize('jpn+eng');
-  }catch(e){
-    console.error('Tesseract init failed',e);
-    hidePdfMo();
-    toast('⚠️ OCR初期化失敗。ネット接続を確認してください。テキストなしで登録します。');
-    return[];
-  }
+  }catch(e){console.error('Tesseract init failed',e);return[];}
   const pages=[];
-  let doc;
-  try{doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;}
-  catch(e){await worker.terminate();return[];}
+  const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
   for(let i=1;i<=pageCount;i++){
     try{
-      setPdfMo(`OCR処理中 ${i}/${pageCount}ページ`,0.6+i/pageCount*0.35);
+      setPdfMo(`OCR処理中 ${i}/${pageCount}ページ`,0.6+i/pageCount*0.4);
       const pg=await doc.getPage(i);
       const vp=pg.getViewport({scale:2.0});
-      const cv=document.createElement('canvas');
-      cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
-      const ctx=cv.getContext('2d');
-      ctx.fillStyle='white';ctx.fillRect(0,0,cv.width,cv.height);
-      await pg.render({canvasContext:ctx,viewport:vp}).promise;
-      const res=await worker.recognize(cv);
-      const txt=(res.data&&res.data.text)||'';
-      pages.push({p:i,t:txt.replace(/\s+/g,' ').trim()});
-    }catch(e){
-      console.warn(`OCR page ${i} failed:`,e);
-      pages.push({p:i,t:''});
-    }
+      const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+      await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      const res=await worker.recognize(cv.toDataURL('image/png'));
+      pages.push({p:i,t:res.data.text.replace(/\s+/g,' ').trim()});
+    }catch{pages.push({p:i,t:''});}
   }
-  try{doc.destroy();}catch{}
-  try{await worker.terminate();}catch{}
-  return pages;
+  doc.destroy();await worker.terminate();return pages;
 }
 
 async function extractToc(file){
   const buf=await file.arrayBuffer();const u8=new Uint8Array(buf);
   try{
     const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
-    const n=doc.numPages;let items=[];let totalChars=0;
+    const n=doc.numPages;let items=[];
     for(let i=1;i<=n;i++){
       const pg=await doc.getPage(i);const tc=await pg.getTextContent();
-      tc.items.forEach(x=>{const s=x.str.trim();if(s){items.push(s);totalChars+=s.length;}});
+      tc.items.forEach(x=>{const s=x.str.trim();if(s)items.push(s);});
     }
     doc.destroy();
-    // 画像PDF目次の場合OCRで再試行
-    if(totalChars<50&&n>0){
-      document.getElementById('toc-hint').textContent='📑 画像PDF目次 — OCR処理中...';
-      const ocrPages=await ocrPdf(u8,n);
-      items=[];
-      ocrPages.forEach(pg=>{
-        pg.t.split(/\n|　/).forEach(line=>{const s=line.trim();if(s)items.push(s);});
-      });
-    }
-    // タイトルとページ番号を分離
     const titles=[],pnums=[];
-    for(const item of items){
-      if(/^\d{1,4}$/.test(item))pnums.push(parseInt(item));
-      else if(item.length>1)titles.push(item);
-    }
+    for(const item of items){if(/^\d+$/.test(item))pnums.push(parseInt(item));else titles.push(item);}
     if(!titles.length)return[];
     return titles.map((title,i)=>({title,page:i<pnums.length?pnums[i]-1:i,level:1}));
-  }catch(e){console.error('extractToc error',e);return[];}
+  }catch{return[];}
 }
 
 /* =============================================
@@ -758,7 +718,7 @@ function dzDropImg(e,el){
   const f=e.dataTransfer.files[0];
   if(f&&f.type.startsWith('image/')){const dt=new DataTransfer();dt.items.add(f);document.getElementById('cov-f').files=dt.files;onCovFile({files:[f]});}
 }
-async function dzDropPdf(e,el){e.preventDefault();dzLeave(el);const f=Array.from(e.dataTransfer.files).find(x=>x.name.endsWith('.pdf'));if(f)await onPdfFile({files:[f]});}
+async function dzDropPdf(e,el){e.preventDefault();dzLeave(el);const fs=Array.from(e.dataTransfer.files).filter(x=>x.name.toLowerCase().endsWith('.pdf'));if(fs.length)await onPdfFile({files:fs,value:''});}
 async function dzDropToc(e,el){e.preventDefault();dzLeave(el);const f=Array.from(e.dataTransfer.files).find(x=>x.name.endsWith('.pdf'));if(f)await onTocFile({files:[f]});}
 
 async function onCovFile(inp){
@@ -781,28 +741,53 @@ function compressImage(file,mw,mh,q){
 function onVolChange(){document.getElementById('b-vol-free').style.display=document.getElementById('b-vol').value==='__free__'?'':'none';}
 
 async function onPdfFile(inp){
-  const f=inp.files[0];if(!f)return;
-  const st=document.getElementById('pdf-status');st.style.display='';
-  st.textContent='⌛ PDF処理中…（画像PDFの場合OCRを自動実行します。数分かかる場合があります）';
-  try{
-    _tmpIdx=await processPdf(f);
-    const hasText=_tmpIdx&&_tmpIdx.some(x=>x.t&&x.t.length>5);
-    if(_tmpIdx&&_tmpIdx.length>0){
-      if(hasText){
-        const totalChars=_tmpIdx.reduce((n,x)=>n+(x.t||'').length,0);
-        st.textContent=`✅ ${_tmpIdx.length}ページ抽出完了（約${Math.round(totalChars/1000)}千文字）`;
-        st.style.color='var(--ac)';
-      } else {
-        st.textContent=`⚠️ ${_tmpIdx.length}ページ処理完了（テキストが少ない — 検索精度が低い可能性があります）`;
-        st.style.color='#c07000';
-      }
+  const files=Array.from(inp.files);if(!files.length)return;
+  for(const f of files){
+    const st=document.getElementById('pdf-status');st.style.display='';
+    st.textContent=`⌛ 「${f.name}」処理中…`;
+    const pages=await processPdf(f);
+    if(pages&&pages.length>0){
+      // ページ番号をオフセット（既存ページ数の続きにする）
+      const offset=_tmpPdfFiles.reduce((n,x)=>n+x.pages.length,0);
+      const offsetPages=pages.map(pg=>({p:pg.p+offset,t:pg.t}));
+      _tmpPdfFiles.push({name:f.name,pages:offsetPages});
+      // _tmpIdx を全ファイルのマージ結果に更新
+      _tmpIdx=_tmpPdfFiles.flatMap(x=>x.pages);
+      // UI更新
+      renderPdfList();
+      // 文字数カウント（バグ修正：全ページのtextを合計）
+      const totalChars=_tmpIdx.reduce((n,pg)=>n+(pg.t?pg.t.length:0),0);
+      const totalPages=_tmpIdx.length;
+      st.textContent=`✅ 計${totalPages}ページ・${Math.round(totalChars/1000)}千文字抽出完了`;
     } else {
-      st.textContent='❌ PDF処理に失敗しました。ファイルを確認してください。';
-      st.style.color='var(--warn)';
+      st.textContent=`⚠️ 「${f.name}」テキスト0件（画像PDF → OCRを試みました）`;
     }
-  }catch(e){
-    st.textContent='❌ エラー: '+e.message;st.style.color='var(--warn)';
   }
+  inp.value=''; // 同じファイルを再登録できるようリセット
+}
+
+function renderPdfList(){
+  const list=document.getElementById('pdf-list');if(!list)return;
+  list.innerHTML='';
+  _tmpPdfFiles.forEach((pf,i)=>{
+    const div=document.createElement('div');div.className='pdf-item';
+    const nm=document.createElement('span');nm.className='pdf-item-name';nm.title=pf.name;nm.textContent='📄 '+pf.name;
+    const pg=document.createElement('span');pg.className='pdf-item-pg';pg.textContent=pf.pages.length+'P';
+    const dl=document.createElement('button');dl.className='pdf-item-del';dl.textContent='✕';dl.title='削除';
+    dl.onclick=()=>{
+      _tmpPdfFiles.splice(i,1);
+      // ページ番号を振り直し
+      let off=0;
+      _tmpPdfFiles.forEach(x=>{x.pages.forEach((pg,j)=>{pg.p=off+j+1;});off+=x.pages.length;});
+      _tmpIdx=_tmpPdfFiles.flatMap(x=>x.pages);
+      renderPdfList();
+      const totalChars=_tmpIdx.reduce((n,pg)=>n+(pg.t?pg.t.length:0),0);
+      const st=document.getElementById('pdf-status');
+      if(_tmpIdx.length>0)st.textContent=`✅ 計${_tmpIdx.length}ページ・${Math.round(totalChars/1000)}千文字`;
+      else{st.style.display='none';}
+    };
+    div.appendChild(nm);div.appendChild(pg);div.appendChild(dl);list.appendChild(div);
+  });
 }
 async function onTocFile(inp){
   const f=inp.files[0];if(!f)return;
@@ -845,20 +830,20 @@ function exitEdit(){_editSid=null;document.getElementById('ebar').classList.remo
 ============================================= */
 function openAddBook(){
   if(!_editSid)return;
-  _editBid=null;_tmpCover=null;_tmpToc=null;_tmpIdx=null;
+  _editBid=null;_tmpCover=null;_tmpToc=null;_tmpIdx=null;_tmpPdfFiles=[];
   document.getElementById('m-book-t').textContent='📖 本を追加';
   ['b-title','b-author','b-date','b-toc-url'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('b-vol').value='';document.getElementById('b-vol-free').style.display='none';
   document.querySelector('input[name="b-dtype"][value="release"]').checked=true;
   document.getElementById('cov-prev').style.display='none';document.getElementById('cov-hint').textContent='🖼️ クリックまたはドロップ';
-  document.getElementById('pdf-status').style.display='none';document.getElementById('toc-hint').textContent='📑 目次PDFをドロップ';
+  document.getElementById('pdf-status').style.display='none';const pdfl=document.getElementById('pdf-list');if(pdfl)pdfl.innerHTML='';document.getElementById('toc-hint').textContent='📑 目次PDFをドロップ';
   document.getElementById('pdf-req').style.display='';document.getElementById('pdf-opt').style.display='none';
   document.getElementById('b-save-btn').textContent='追加する';document.getElementById('b-err').classList.add('h');
   om('m-book');
 }
 function openEditBook(bid){
   const b=db.books.find(x=>x.id===bid);if(!b)return;
-  _editBid=bid;_tmpCover=null;_tmpToc=null;_tmpIdx=null;
+  _editBid=bid;_tmpCover=null;_tmpToc=null;_tmpIdx=null;_tmpPdfFiles=[];
   document.getElementById('m-book-t').textContent='✏️ 本を編集';
   document.getElementById('b-title').value=b.title||'';
   document.getElementById('b-author').value=b.author||'';
@@ -872,7 +857,8 @@ function openEditBook(bid){
   if(b.hasCover&&_covers[bid]){const img=document.getElementById('cov-prev');img.src=_covers[bid];img.style.display='';document.getElementById('cov-hint').textContent='変更する場合はクリック';}
   else{document.getElementById('cov-prev').style.display='none';document.getElementById('cov-hint').textContent='🖼️ クリックまたはドロップ';}
   const st=document.getElementById('pdf-status');st.style.display='';
-  st.textContent=b.hasIdx?`✅ インデックス登録済み（${b.pageCount||'?'}ページ）`:'未登録 — PDFをドロップして再登録';
+  const pdfl2=document.getElementById('pdf-list');if(pdfl2)pdfl2.innerHTML='';
+  st.textContent=b.hasIdx?`✅ インデックス登録済み（${b.pageCount||'?'}ページ）。新しいPDFを追加すると追記されます`:'未登録 — PDFをドロップして登録';
   document.getElementById('toc-hint').textContent=b.toc&&b.toc.length?`📑 目次登録済み（${b.toc.length}件）`:'📑 目次PDFをドロップ';
   document.getElementById('pdf-req').style.display='none';document.getElementById('pdf-opt').style.display='';
   document.getElementById('b-save-btn').textContent='保存する';document.getElementById('b-err').classList.add('h');
@@ -894,13 +880,20 @@ async function saveBook(){
     Object.assign(b,{title,vol,author,date,dtype,tocUrl});
     if(_tmpCover){b.hasCover=true;_covers[_editBid]=_tmpCover;}
     if(_tmpToc)b.toc=_tmpToc;
-    if(_tmpIdx){b.hasIdx=true;b.pageCount=_tmpIdx.length;_indexes[_editBid]=_tmpIdx;}
+    if(_tmpIdx&&_tmpIdx.length){
+      // 既存インデックスに追記（編集時）
+      const existing=_indexes[_editBid]||[];
+      const merged=existing.concat(_tmpIdx.filter(pg=>!existing.find(e=>e.p===pg.p)));
+      merged.sort((a,b)=>a.p-b.p);
+      _indexes[_editBid]=merged;
+      b.hasIdx=true;b.pageCount=merged.length;
+    }
   } else {
     const id='bk_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
-    const b={id,sid:_editSid,title,vol,author,date,dtype,tocUrl,hasCover:!!_tmpCover,toc:_tmpToc||[],hasIdx:!!_tmpIdx,pageCount:_tmpIdx?_tmpIdx.length:0,comment:''};
+    const b={id,sid:_editSid,title,vol,author,date,dtype,tocUrl,hasCover:!!_tmpCover,toc:_tmpToc||[],hasIdx:!!(_tmpIdx&&_tmpIdx.length),pageCount:_tmpIdx?_tmpIdx.length:0,comment:''};
     db.books.push(b);_editBid=id;
     if(_tmpCover)_covers[id]=_tmpCover;
-    if(_tmpIdx)_indexes[id]=_tmpIdx;
+    if(_tmpIdx&&_tmpIdx.length)_indexes[id]=_tmpIdx;
   }
   const ok=await saveAllToGitHub('本を保存');
   btn.disabled=false;
