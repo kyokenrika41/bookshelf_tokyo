@@ -650,62 +650,134 @@ async function processPdf(file){
     for(let i=1;i<=n;i++){
       setPdfMo(`テキスト抽出中 ${i}/${n}ページ`,i/n*0.6);
       const pg=await doc.getPage(i);const tc=await pg.getTextContent();
-      const txt=tc.items.map(x=>x.str).join(' ').trim();
-      pages.push({p:i,t:txt});total+=txt.length;
+      // ★ 空白のみのアイテムを除外してカウント
+      const txt=tc.items.map(x=>x.str).join('').replace(/\s/g,'');
+      const fullTxt=tc.items.map(x=>x.str).join(' ').trim();
+      pages.push({p:i,t:fullTxt});total+=txt.length;
     }
     doc.destroy();
+    // ★ 判定基準を厳しくする（1ページ平均5文字未満 → 画像PDF）
     const avg=total/n;
-    if(avg<30){
-      // 画像PDF → OCR
+    if(avg<5){
       setPdfMo(`画像PDFを検出 — OCR開始 (日本語+英語)`,0.6);
-      const ocrPages=await ocrPdf(u8,n);
+      const ocrPages=await ocrPdf(u8,n,pages);
       hidePdfMo();return ocrPages;
     }
     hidePdfMo();return pages;
   }catch(e){hidePdfMo();console.error(e);return[];}
 }
 
-async function ocrPdf(u8,pageCount){
-  let worker;
+async function ocrPdf(u8,pageCount,fallbackPages){
+  // ★ Tesseract.js v5 正しいAPI
+  let worker=null;
   try{
-    worker=await Tesseract.createWorker('jpn+eng',1,{
-      workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-      langPath:'https://tessdata.projectnaptha.com/4.0.0',
-      corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
-      logger:()=>{}
-    });
-  }catch(e){console.error('Tesseract init failed',e);return[];}
-  const pages=[];
-  const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
-  for(let i=1;i<=pageCount;i++){
-    try{
-      setPdfMo(`OCR処理中 ${i}/${pageCount}ページ`,0.6+i/pageCount*0.4);
-      const pg=await doc.getPage(i);
-      const vp=pg.getViewport({scale:2.0});
-      const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
-      await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-      const res=await worker.recognize(cv.toDataURL('image/png'));
-      pages.push({p:i,t:res.data.text.replace(/\s+/g,' ').trim()});
-    }catch{pages.push({p:i,t:''});}
+    // v5: createWorker(lang) のみ
+    worker=await Tesseract.createWorker('jpn');
+  }catch(e){
+    console.warn('Tesseract jpn failed, trying eng:',e);
+    try{worker=await Tesseract.createWorker('eng');}
+    catch(e2){
+      console.error('Tesseract init failed:',e2);
+      // ★ OCRが完全に失敗した場合はテキスト版の結果をそのまま返す
+      setPdfMo('OCR初期化失敗 — テキスト抽出結果を使用',1);
+      return fallbackPages||[];
+    }
   }
-  doc.destroy();await worker.terminate();return pages;
+  const pages=[];
+  let doc=null;
+  try{
+    doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
+    for(let i=1;i<=pageCount;i++){
+      try{
+        setPdfMo(`OCR処理中 ${i}/${pageCount}ページ`,0.6+i/pageCount*0.4);
+        const pg=await doc.getPage(i);
+        const vp=pg.getViewport({scale:1.5});// ★ スケール下げてメモリ節約
+        const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+        await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+        const res=await worker.recognize(cv);// ★ canvas要素を直接渡す（toDataURL不要）
+        const txt=res.data.text.replace(/\s+/g,' ').trim();
+        pages.push({p:i,t:txt});
+      }catch(e){
+        console.warn(`OCR page ${i} failed:`,e);
+        // フォールバック：テキスト版の該当ページを使用
+        const fb=fallbackPages&&fallbackPages.find(x=>x.p===i);
+        pages.push({p:i,t:fb?fb.t:''});
+      }
+    }
+  }finally{
+    if(doc)doc.destroy();
+    if(worker)await worker.terminate().catch(()=>{});
+  }
+  // OCR結果が空ならフォールバックを返す
+  const hasContent=pages.some(p=>p.t&&p.t.length>5);
+  if(!hasContent&&fallbackPages&&fallbackPages.length){
+    console.warn('OCR produced no content, using text extraction fallback');
+    return fallbackPages;
+  }
+  return pages;
 }
 
 async function extractToc(file){
   const buf=await file.arrayBuffer();const u8=new Uint8Array(buf);
   try{
     const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
-    const n=doc.numPages;let items=[];
+    const n=doc.numPages;
+    // ★ テキストアイテムをY座標でグループ化（同じ行のアイテムをまとめる）
+    let lineMap=[];
     for(let i=1;i<=n;i++){
       const pg=await doc.getPage(i);const tc=await pg.getTextContent();
-      tc.items.forEach(x=>{const s=x.str.trim();if(s)items.push(s);});
+      // Y座標が近いアイテムを同じ行としてまとめる
+      const rowMap={};
+      tc.items.forEach(x=>{
+        if(!x.str.trim())return;
+        const y=Math.round(x.transform[5]/3)*3;// 3px単位で丸める
+        if(!rowMap[y])rowMap[y]=[];
+        rowMap[y].push(x.str);
+      });
+      Object.keys(rowMap).sort((a,b)=>b-a).forEach(y=>{
+        const line=rowMap[y].join('').trim();
+        if(line)lineMap.push(line);
+      });
     }
     doc.destroy();
-    const titles=[],pnums=[];
-    for(const item of items){if(/^\d+$/.test(item))pnums.push(parseInt(item));else titles.push(item);}
-    if(!titles.length)return[];
-    return titles.map((title,i)=>({title,page:i<pnums.length?pnums[i]-1:i,level:1}));
-  }catch{return[];}
+    if(!lineMap.length)return[];
+
+    const entries=[];
+    for(const line of lineMap){
+      // ★ パターン1: 行末に数字 「生命の起源　2」「生命の起源...2」
+      const m1=line.match(/^(.+?)[\s　\.・·]+(\d+)\s*$/);
+      if(m1){
+        const title=m1[1].replace(/[\s　]+$/,'').trim();
+        const page=parseInt(m1[2]);
+        if(title.length>=1&&page>0)entries.push({title,page:page-1,level:1});
+        continue;
+      }
+      // ★ パターン2: 行頭に数字 「2　生命の起源」（番号＋タイトル）
+      const m2=line.match(/^(\d+)[\s　]+(.+)$/);
+      if(m2){
+        const title=m2[2].trim();
+        const page=parseInt(m2[1]);
+        if(title.length>=2)entries.push({title,page:page-1,level:1});
+        continue;
+      }
+      // ★ パターン3: 数字のみの行は単独のページ番号として次のタイトルに付与
+      // （スキップ：前後関係が複雑なので別処理で対応）
+    }
+
+    // ★ パターン3フォールバック: 数字とタイトルが交互に並ぶ形式
+    if(entries.length===0){
+      const titles=[],pnums=[];
+      for(const line of lineMap){
+        if(/^\d+$/.test(line.trim()))pnums.push(parseInt(line.trim()));
+        else if(line.trim().length>=2)titles.push(line.trim());
+      }
+      if(titles.length>0){
+        return titles.map((title,i)=>({title,page:i<pnums.length?pnums[i]-1:i,level:1}));
+      }
+    }
+
+    return entries;
+  }catch(e){console.error('extractToc error',e);return[];}
 }
 
 /* =============================================
@@ -793,7 +865,13 @@ async function onTocFile(inp){
   const f=inp.files[0];if(!f)return;
   document.getElementById('toc-hint').textContent='⌛ 目次解析中...';
   _tmpToc=await extractToc(f);
-  document.getElementById('toc-hint').textContent=_tmpToc.length?`📑 ${f.name}（${_tmpToc.length}件抽出）`:`📑 ${f.name}（解析失敗）`;
+  if(_tmpToc.length){
+    document.getElementById('toc-hint').textContent=`📑 ${f.name}（${_tmpToc.length}件抽出）`;
+  } else {
+    // ★ 解析失敗時はヒントを表示
+    document.getElementById('toc-hint').innerHTML=
+      `⚠️ 自動解析できませんでした<br><small style="color:var(--muted)">目次URLを入力するか、手動で登録してください</small>`;
+  }
 }
 
 /* =============================================
