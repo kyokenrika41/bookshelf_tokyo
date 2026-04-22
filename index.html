@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 本棚</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.4/dist/tesseract.min.js"></script>
+<style>
+:root{
+  --bg:#F3EEE5;--bgc:#FDFAF5;--text:#1C1C1C;--mid:#4A4A4A;--muted:#8A8A8A;
+  --ac:#3B6357;--acl:#EAF2EF;--ach:#2E4F45;--warn:#C0392B;
+  --bd:#DDD6C8;--bdl:#EDE8DF;--r:12px;--rs:8px;
+  --serif:'Noto Serif JP',serif;--sans:'Noto Sans JP',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.7;min-height:100vh}
+/* Header */
+#hd{position:sticky;top:0;z-index:100;background:rgba(243,238,229,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--bd);padding:0 24px;display:flex;align-items:center;gap:14px;height:60px}
+#logo{font-family:var(--serif);font-size:20px;font-weight:700;cursor:pointer;flex-shrink:0}
+#logo span{color:var(--ac)}
+#stabs{display:flex;gap:4px;flex:1;overflow-x:auto;padding:4px 0}
+#stabs::-webkit-scrollbar{display:none}
+.stab{padding:5px 14px;border-radius:20px;background:transparent;border:1px solid transparent;font-size:13px;font-weight:500;color:var(--mid);cursor:pointer;white-space:nowrap;transition:all .2s;font-family:var(--sans)}
+.stab:hover{background:var(--acl);color:var(--ac)}
+.stab.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+#hacts{display:flex;gap:8px;flex-shrink:0}
+.ibt{width:34px;height:34px;border:1px solid var(--bd);border-radius:8px;background:var(--bgc);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .2s}
+.ibt:hover{background:var(--acl);border-color:var(--ac)}
+#sw{position:relative;display:flex;align-items:center}
+#srch{padding:6px 12px 6px 28px;border:1px solid var(--bd);border-radius:20px;background:var(--bgc);font-size:13px;color:var(--text);outline:none;width:150px;transition:all .2s;font-family:var(--sans)}
+#srch:focus{width:210px;border-color:var(--ac)}
+.si{position:absolute;left:9px;font-size:12px;color:var(--muted);pointer-events:none}
+/* Main */
+#main{max-width:1200px;margin:0 auto;padding:32px 24px}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.sec-title{font-family:var(--serif);font-size:22px;font-weight:700}
+.sec-cnt{font-size:13px;color:var(--muted);margin-left:10px;font-family:var(--sans);font-weight:400}
+/* Edit bar */
+#ebar{display:none;background:#FFF8E1;border:1px solid #F0D080;border-radius:var(--rs);padding:10px 16px;margin-bottom:16px;align-items:center;gap:12px;font-size:13px;color:#7A5C00}
+#ebar.on{display:flex}
+#ebar-msg{flex:1}
+/* Book grid */
+#bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+.bcard{background:var(--bgc);border:1px solid var(--bdl);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .25s;position:relative}
+.bcard:hover{transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,.1);border-color:var(--ac)}
+.bcov{width:100%;aspect-ratio:3/4;background:linear-gradient(135deg,#C8DDD8,#A8C4BE);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.bcov img{width:100%;height:100%;object-fit:cover}
+.bph{font-family:var(--serif);font-size:10px;color:#5E8A80;text-align:center;padding:8px;line-height:1.4}
+.binf{padding:8px 10px 10px}
+.btag{display:inline-block;padding:1px 6px;background:var(--acl);color:var(--ac);border-radius:10px;font-size:10px;font-weight:500;margin-bottom:3px}
+.btit{font-family:var(--serif);font-size:11px;font-weight:500;line-height:1.4;margin-bottom:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bmeta{font-size:10px;color:var(--muted)}
+/* Edit overlay */
+.bcard.ea{border:2px dashed #A8C8C0;cursor:default}
+.bcard.ea:hover{transform:none}
+.beo{position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;opacity:0;pointer-events:none;transition:opacity .2s;border-radius:var(--r)}
+.bcard.ea:hover .beo{opacity:1;pointer-events:auto}
+.eob{padding:5px 0;width:90px;border-radius:16px;font-size:11px;font-weight:500;border:none;cursor:pointer;font-family:var(--sans)}
+.eob-e{background:#fff;color:var(--ac)}.eob-d{background:rgba(192,57,43,.88);color:#fff}
+/* Empty */
+.empty{text-align:center;padding:80px 20px;color:var(--muted);grid-column:1/-1}
+.eic{font-size:48px;margin-bottom:12px}
+/* Book panel */
+#bpov{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.35);backdrop-filter:blur(2px)}
+#bpov.on{display:block}
+#bp{position:fixed;top:0;right:0;bottom:0;width:440px;max-width:100vw;z-index:201;background:var(--bgc);border-left:1px solid var(--bd);box-shadow:-8px 0 32px rgba(0,0,0,.12);display:flex;flex-direction:column;transform:translateX(110%);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+#bp.on{transform:translateX(0)}
+#bp-hd{padding:14px 16px 0;flex-shrink:0;border-bottom:1px solid var(--bdl)}
+#bp-close{float:right;width:26px;height:26px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;color:var(--mid);margin-left:8px}
+#bp-close:hover{background:var(--acl);border-color:var(--ac)}
+#bp-subj{font-size:11px;color:var(--muted);margin-bottom:3px}
+#bp-title{font-family:var(--serif);font-size:14px;font-weight:700;line-height:1.4;padding-right:34px;margin-bottom:12px}
+#bp-tabs{display:flex;border-bottom:2px solid var(--bdl);flex-shrink:0;padding:0 16px;background:var(--bgc)}
+.bpt{flex:1;padding:9px 4px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:var(--sans);border-bottom:2px solid transparent;margin-bottom:-2px}
+.bpt:hover{color:var(--ac)}.bpt.on{color:var(--ac);border-bottom-color:var(--ac)}
+#bpbody{flex:1;overflow-y:auto;padding:14px 16px}
+#bpbody::-webkit-scrollbar{width:4px}
+#bpbody::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.bptab{display:none}.bptab.on{display:block}
+/* TOC */
+.toci{padding:6px 10px;border-radius:6px;color:var(--mid);font-size:13px;line-height:1.5;margin-bottom:2px;display:flex;justify-content:space-between;align-items:baseline}
+.toci:hover{background:var(--acl)}
+.toci.l2{padding-left:20px;font-size:12px}.toci.l3{padding-left:32px;font-size:11px}
+.toci-pg{font-size:11px;color:var(--muted);flex-shrink:0;margin-left:8px}
+/* Search */
+.srchrow{display:flex;gap:8px;margin-bottom:12px}
+#bpkw{flex:1;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text);outline:none;font-family:var(--sans)}
+#bpkw:focus{border-color:var(--ac);background:#fff}
+#bpsbtn{padding:8px 14px;background:var(--ac);border:none;border-radius:8px;color:#fff;font-size:13px;cursor:pointer;font-family:var(--sans)}
+#bpsbtn:hover{background:var(--ach)}
+.srhit{padding:8px 10px;background:var(--bg);border:1px solid var(--bdl);border-radius:8px;margin-bottom:6px}
+.srpg{font-size:11px;color:var(--ac);font-weight:600;margin-bottom:2px}
+.srtx{font-size:12px;color:var(--mid);line-height:1.5}
+.srtx mark{background:#D6EDE8;color:var(--ac);border-radius:2px;padding:0 2px}
+.bpempty{text-align:center;padding:30px 20px;color:var(--muted);font-size:13px}
+/* Buttons */
+.btn{padding:9px 18px;border-radius:var(--rs);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .2s;display:inline-flex;align-items:center;gap:6px;font-family:var(--sans)}
+.btn-p{background:var(--ac);color:#fff}.btn-p:hover{background:var(--ach)}
+.btn-o{background:transparent;border:1px solid var(--bd);color:var(--mid)}.btn-o:hover{background:var(--acl);border-color:var(--ac);color:var(--ac)}
+.btn-d{background:#fdf0ef;border:1px solid #f0c4c4;color:var(--warn)}.btn-d:hover{background:#fde8e6}
+.btn-sm{padding:6px 12px;font-size:12px}
+/* Modal */
+.mo{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
+.mo.h{display:none}
+.mb{background:#fff;border-radius:16px;padding:26px;width:100%;max-width:520px;box-shadow:0 16px 48px rgba(0,0,0,.14);position:relative;max-height:92vh;overflow-y:auto}
+.mb.wide{max-width:700px}
+.mb h2{font-family:var(--serif);font-size:18px;font-weight:700;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--bdl)}
+.mcl{position:absolute;top:16px;right:16px;width:28px;height:28px;background:var(--bg);border:1px solid var(--bd);border-radius:7px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--mid)}
+.fg{margin-bottom:14px}
+.fl{display:block;font-size:13px;font-weight:500;color:var(--mid);margin-bottom:4px}
+.fi{width:100%;padding:9px 12px;border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;background:var(--bg);color:var(--text);outline:none;transition:border .2s;font-family:var(--sans)}
+.fi:focus{border-color:var(--ac);background:#fff}
+.mft{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--bdl)}
+.errmsg{color:var(--warn);font-size:12px;margin-top:4px}
+.h{display:none!important}
+/* Dropzone */
+.dz{border:2px dashed var(--bd);border-radius:var(--rs);padding:16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.dz:hover,.dz.ov{border-color:var(--ac);background:var(--acl)}
+.dz p{font-size:13px;color:var(--muted)}.dz small{font-size:11px;color:var(--muted)}
+/* Progress bar */
+#pgbar{position:fixed;top:0;left:0;right:0;height:3px;background:var(--ac);z-index:9999;transform-origin:left;transform:scaleX(0);transition:transform .3s}
+/* Toast */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--text);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;transform:translateY(70px);opacity:0;transition:all .3s;pointer-events:none;max-width:400px}
+#toast.on{transform:translateY(0);opacity:1}
+/* PDF progress modal */
+#pdfmo{position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+#pdfmo.h{display:none}
+#pdfbox{background:#fff;border-radius:14px;padding:24px 28px;width:380px;text-align:center}
+#pdfbox h3{font-family:var(--serif);margin-bottom:14px;font-size:16px}
+#pdfpbwrap{background:#e0e0e0;border-radius:10px;height:8px;margin:12px 0;overflow:hidden}
+#pdfpb{background:var(--ac);height:100%;border-radius:10px;width:0%;transition:width .3s}
+#pdftxt{font-size:12px;color:var(--muted);min-height:20px}
+/* Setup info */
+.info-box{background:var(--bg);border:1px solid var(--bd);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--mid);line-height:2}
+.gh-box{background:#EEF4FF;border:1px solid #BDD0F5;border-radius:var(--rs);padding:14px;margin-bottom:12px}
+.gh-box-title{font-size:13px;font-weight:600;color:#1a3a6a;margin-bottom:10px}
+/* Spin */
+.spin{animation:spin 1s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:600px){#bp{width:100vw}}
+</style>
+</head>
+<body>
+<div id="pgbar"></div>
+<div id="toast"></div>
+
+<!-- PDF処理進捗モーダル -->
+<div id="pdfmo" class="h">
+  <div id="pdfbox">
+    <h3 id="pdfmo-title">📄 PDF処理中</h3>
+    <div id="pdfpbwrap"><div id="pdfpb"></div></div>
+    <div id="pdftxt">準備中...</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">ページ数によって数分かかる場合があります</div>
+  </div>
+</div>
+
+<!-- ヘッダー -->
+<header id="hd">
+  <div id="logo" onclick="goHome()">📚 <span>本棚</span></div>
+  <div id="stabs"></div>
+  <div id="hacts">
+    <div id="sw"><span class="si">🔍</span><input id="srch" type="text" placeholder="本を検索…" oninput="filterBooks(this.value)"></div>
+    <button class="ibt" onclick="openSubjMgr()" title="教科管理">⚙️</button>
+    <button class="ibt" onclick="openSetup()" title="設定・GitHub">💾</button>
+  </div>
+</header>
+
+<!-- メイン -->
+<div id="main">
+  <div id="ebar">
+    <span id="ebar-msg">✏️ 編集モード：<strong id="ebar-nm"></strong>　本にカーソルを合わせると編集・削除できます</span>
+    <button class="btn btn-p" onclick="openAddBook()">＋ 本を追加</button>
+    <button class="btn btn-o" onclick="exitEdit()">完了</button>
+  </div>
+  <div class="sec-hd">
+    <div><span class="sec-title" id="vtit">すべての本</span><span class="sec-cnt" id="vcnt"></span></div>
+    <button class="btn btn-o btn-sm" id="editbtn" onclick="reqEdit()" style="display:none">✏️ 編集</button>
+  </div>
+  <div id="bgrid"></div>
+</div>
+
+<!-- 本パネル -->
+<div id="bpov" onclick="closeBP()"></div>
+<div id="bp">
+  <div id="bp-hd">
+    <button id="bp-close" onclick="closeBP()">✕</button>
+    <div id="bp-subj"></div>
+    <div id="bp-title"></div>
+  </div>
+  <div id="bp-tabs">
+    <button class="bpt on" onclick="switchBPTab('toc')">📑 目次</button>
+    <button class="bpt" onclick="switchBPTab('search')">🔍 検索</button>
+    <button class="bpt" onclick="switchBPTab('comment')">💬 コメント</button>
+  </div>
+  <div id="bpbody">
+    <div class="bptab on" id="bpt-toc"></div>
+    <div class="bptab" id="bpt-search">
+      <div class="srchrow">
+        <input id="bpkw" type="text" placeholder="キーワードを入力…" onkeydown="if(event.key==='Enter')doSearch()">
+        <button id="bpsbtn" onclick="doSearch()">検索</button>
+      </div>
+      <div id="bpresults"></div>
+    </div>
+    <div class="bptab" id="bpt-comment">
+      <div id="bpcmt-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: パスワード -->
+<div class="mo h" id="m-pw">
+  <div class="mb">
+    <button class="mcl" onclick="cm('m-pw')">✕</button>
+    <h2>🔐 パスワードを入力</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px" id="pw-lbl"></p>
+    <div class="fg">
+      <label class="fl">パスワード</label>
+      <input class="fi" type="password" id="pw-in" onkeydown="if(event.key==='Enter')subPw()">
+      <div class="errmsg h" id="pw-err">パスワードが違います</div>
+    </div>
+    <div class="mft">
+      <button class="btn btn-o" onclick="cm('m-pw')">キャンセル</button>
+      <button class="btn btn-p" onclick="subPw()">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 本の追加・編集 -->
+<div class="mo h" id="m-book">
+  <div class="mb wide">
+    <button class="mcl" onclick="cm('m-book')">✕</button>
+    <h2 id="m-book-t">📖 本を追加</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <div>
+        <div class="fg">
+          <label class="fl">① タイトル <span style="color:var(--warn)">*</span></label>
+          <input class="fi" type="text" id="b-title" placeholder="例: 高校生物">
+        </div>
+        <div class="fg">
+          <label class="fl">② 巻（任意）</label>
+          <select class="fi" id="b-vol" onchange="onVolChange()">
+            <option value="">—</option>
+            <option value="上巻">上巻</option><option value="中巻">中巻</option><option value="下巻">下巻</option>
+            <option value="__free__">フリー入力…</option>
+          </select>
+          <input class="fi" type="text" id="b-vol-free" placeholder="巻を入力" style="margin-top:6px;display:none">
+        </div>
+        <div class="fg">
+          <label class="fl">③ 著者名（任意）</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="fi" type="text" id="b-author" placeholder="山田太郎" style="flex:1">
+            <span style="font-size:14px;color:var(--mid);white-space:nowrap">先生</span>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">④ 日付・種別</label>
+          <div style="display:flex;gap:16px;margin-bottom:8px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="b-dtype" value="release" checked style="accent-color:var(--ac)"> リリース</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="b-dtype" value="revision" style="accent-color:var(--ac)"> 改定</label>
+          </div>
+          <input class="fi" type="date" id="b-date">
+        </div>
+        <div class="fg">
+          <label class="fl">⑤ 表紙画像（任意）</label>
+          <div class="dz" id="cov-dz" onclick="document.getElementById('cov-f').click()" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDropImg(event,this)">
+            <p id="cov-hint">🖼️ クリックまたはドロップ</p><small>JPG/PNG推奨</small>
+          </div>
+          <input type="file" id="cov-f" accept="image/*" style="display:none" onchange="onCovFile(this)">
+          <img id="cov-prev" style="width:68px;height:91px;object-fit:cover;border-radius:4px;border:1px solid var(--bd);margin-top:8px;display:none">
+        </div>
+      </div>
+      <div>
+        <div class="fg">
+          <label class="fl">⑥ 本文PDF <span style="color:var(--warn)" id="pdf-req">*</span><span id="pdf-opt" style="font-size:12px;color:var(--muted);display:none">（変更時のみ）</span></label>
+          <div class="dz" id="pdf-dz" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDropPdf(event,this)" onclick="document.getElementById('pdf-f').click()">
+            <p>📄 PDFをドロップまたはクリック</p><small>テキスト抽出・OCR(画像PDF)対応</small>
+          </div>
+          <input type="file" id="pdf-f" accept=".pdf" style="display:none" onchange="onPdfFile(this)">
+          <div id="pdf-status" style="font-size:12px;margin-top:6px;color:var(--ac);display:none"></div>
+        </div>
+        <div class="fg">
+          <label class="fl">⑦ 目次PDF（任意）</label>
+          <div class="dz" id="toc-dz" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDropToc(event,this)" onclick="document.getElementById('toc-f').click()">
+            <p id="toc-hint">📑 目次PDFをドロップ</p><small>ページ番号を自動解析</small>
+          </div>
+          <input type="file" id="toc-f" accept=".pdf" style="display:none" onchange="onTocFile(this)">
+        </div>
+        <div class="fg">
+          <label class="fl">目次URL（任意）</label>
+          <input class="fi" type="url" id="b-toc-url" placeholder="https://... (NAS/クラウド共有リンク)" style="font-size:12px;padding:7px 10px">
+          <small style="font-size:11px;color:var(--muted)">URLを指定するとリンクで目次PDFを開けます</small>
+        </div>
+      </div>
+    </div>
+    <div class="errmsg h" id="b-err"></div>
+    <div class="mft">
+      <button class="btn btn-o" onclick="cm('m-book')">キャンセル</button>
+      <button class="btn btn-p" id="b-save-btn" onclick="saveBook()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 教科管理 -->
+<div class="mo h" id="m-subj">
+  <div class="mb" style="max-width:500px">
+    <button class="mcl" onclick="cm('m-subj')">✕</button>
+    <h2>⚙️ 教科の管理</h2>
+    <div id="slist"></div>
+    <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--bdl)">
+      <p style="font-size:13px;font-weight:500;margin-bottom:10px">新しい教科を追加</p>
+      <input class="fi" type="text" id="ns-name" placeholder="教科名" style="margin-bottom:8px">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input class="fi" type="password" id="ns-pw" placeholder="編集パスワード">
+        <input class="fi" type="password" id="ns-pw2" placeholder="（確認）">
+      </div>
+      <div class="errmsg h" id="serr"></div>
+      <button class="btn btn-p" style="margin-top:8px" onclick="addSubj()">＋ 追加</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 設定 -->
+<div class="mo h" id="m-setup">
+  <div class="mb" style="max-width:560px">
+    <button class="mcl" onclick="cm('m-setup')">✕</button>
+    <h2>⚙️ 設定・GitHub連携</h2>
+    <div class="info-box" id="setup-info"></div>
+    <div class="gh-box">
+      <div class="gh-box-title">🔗 GitHubリポジトリ設定（編集PCに保存）</div>
+      <div class="fg" style="margin-bottom:8px">
+        <label class="fl" style="font-size:12px">オーナー/リポジトリ名</label>
+        <input class="fi" type="text" id="s-repo" placeholder="username/repository-name" style="font-size:12px;padding:7px 10px">
+      </div>
+      <div class="fg" style="margin-bottom:10px">
+        <label class="fl" style="font-size:12px">Personal Access Token（Contents read/write権限）</label>
+        <input class="fi" type="password" id="s-token" placeholder="ghp_xxxxxxxxxxxx" style="font-size:12px;padding:7px 10px">
+        <small style="font-size:11px;color:var(--muted)">このブラウザにのみ保存されます。共有されません。</small>
+      </div>
+      <button class="btn btn-p" onclick="saveSetup()" style="background:#1a3a6a">💾 設定を保存</button>
+      <span id="setup-st" style="font-size:12px;color:var(--mid);margin-left:10px"></span>
+    </div>
+    <div style="background:var(--acl);border:1px solid #b5d5cc;border-radius:var(--rs);padding:14px">
+      <div style="font-size:13px;font-weight:600;color:var(--ac);margin-bottom:6px">🚀 GitHubに保存</div>
+      <div style="font-size:12px;color:var(--mid);margin-bottom:10px;line-height:1.7">書籍データをGitHubに保存します。全端末に即時反映されます。本の追加・編集後は必ずこちらで保存してください。</div>
+      <button class="btn btn-p" onclick="saveAllToGitHub()">🚀 今すぐGitHubに保存</button>
+      <span id="gh-st" style="font-size:12px;color:var(--mid);margin-left:10px"></span>
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:var(--muted);line-height:1.8">
+      💡 <strong>GitHub Pages URL:</strong> https://<em>username</em>.github.io/<em>repo</em>/<br>
+      このURLをGoogle Sitesに埋め込んでください。
+    </div>
+  </div>
+</div>
+
+<script>
+/* =============================================
+   CONSTANTS
+============================================= */
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const PDFJS_OPTS={cMapUrl:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',cMapPacked:true};
+const LS_REPO='bk3_repo',LS_TOKEN='bk3_token',LS_CACHE='bk3_cache',LS_CACHE_TS='bk3_cache_ts';
+const META_PATH='data/meta.json';
+const COVER_PATH=id=>`data/covers/${id}.txt`;
+const IDX_PATH=id=>`data/idx/${id}.json`;
+const CACHE_TTL=5*60*1000; // 5分
+
+/* =============================================
+   GITHUB API
+============================================= */
+const GH={
+  get repo(){return localStorage.getItem(LS_REPO)||'';},
+  get token(){return localStorage.getItem(LS_TOKEN)||'';},
+  raw(path){return`https://raw.githubusercontent.com/${this.repo}/main/${path}?t=${Date.now()}`;},
+  api(path){return`https://api.github.com/repos/${this.repo}/contents/${path}`;},
+
+  async readText(path){
+    if(!this.repo)return null;
+    try{const r=await fetch(this.raw(path));if(!r.ok)return null;return await r.text();}
+    catch{return null;}
+  },
+  async readJSON(path){
+    const t=await this.readText(path);
+    if(!t)return null;
+    try{return JSON.parse(t);}catch{return null;}
+  },
+  async write(path,content,msg){
+    if(!this.token||!this.repo)return{ok:false,err:'GitHub設定が未完了です'};
+    let sha='';
+    try{
+      const r=await fetch(this.api(path),{headers:{Authorization:`token ${this.token}`,Accept:'application/vnd.github.v3+json'}});
+      if(r.ok){const j=await r.json();sha=j.sha||'';}
+    }catch{}
+    let encoded;
+    try{encoded=btoa(unescape(encodeURIComponent(content)));}
+    catch{encoded=btoa(content);}
+    const body={message:msg||`更新 ${new Date().toLocaleString('ja-JP')}`,content:encoded};
+    if(sha)body.sha=sha;
+    try{
+      const r=await fetch(this.api(path),{method:'PUT',headers:{Authorization:`token ${this.token}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r.ok)return{ok:true};
+      const e=await r.json().catch(()=>({}));
+      return{ok:false,err:e.message||r.status};
+    }catch(e){return{ok:false,err:e.message};}
+  }
+};
+
+/* =============================================
+   DATA MODEL
+============================================= */
+let db={v:3,updated:'',subjects:[],books:[]};
+let _covers={};   // bookId -> dataURL
+let _indexes={};  // bookId -> [{p,t}]
+let _editSid=null,_curSid='all',_filterQ='',_bpBid=null;
+let _tmpCover=null,_tmpToc=null,_tmpIdx=null;
+let _editBid=null;
+
+/* =============================================
+   INIT
+============================================= */
+async function init(){
+  setBar(0.1);
+  if(GH.repo){
+    // GitHub優先、キャッシュが5分以内なら使用
+    const tsStr=localStorage.getItem(LS_CACHE_TS);
+    const cached=localStorage.getItem(LS_CACHE);
+    const fresh=tsStr&&(Date.now()-parseInt(tsStr)<CACHE_TTL);
+    if(fresh&&cached){
+      try{db=JSON.parse(cached);}catch{}
+      setBar(1);setTimeout(hidebar,400);
+      renderAll();
+      // バックグラウンドで最新を取得
+      GH.readJSON(META_PATH).then(r=>{if(r&&r.updated&&r.updated!==db.updated){db=r;saveCache();renderAll();}});
+      return;
+    }
+    const remote=await GH.readJSON(META_PATH);
+    if(remote){db=remote;saveCache();}
+    else{const c=localStorage.getItem(LS_CACHE);if(c)try{db=JSON.parse(c);}catch{}}
+  } else {
+    const c=localStorage.getItem(LS_CACHE);if(c)try{db=JSON.parse(c);}catch{}
+  }
+  setBar(1);setTimeout(hidebar,400);
+  renderAll();
+}
+function saveCache(){localStorage.setItem(LS_CACHE,JSON.stringify(db));localStorage.setItem(LS_CACHE_TS,Date.now());}
+
+/* =============================================
+   RENDER
+============================================= */
+function renderAll(){renderTabs();renderBooks();}
+
+function renderTabs(){
+  const c=document.getElementById('stabs');c.innerHTML='';
+  c.appendChild(mkTab('all','すべて',_curSid==='all'));
+  db.subjects.forEach(s=>c.appendChild(mkTab(s.id,s.name,_curSid===s.id)));
+}
+function mkTab(sid,name,active){
+  const b=document.createElement('button');b.className='stab'+(active?' on':'');b.textContent=name;
+  b.onclick=()=>switchSid(sid);return b;
+}
+function switchSid(sid){
+  _curSid=sid;_filterQ='';document.getElementById('srch').value='';
+  renderTabs();renderBooks();
+  const eb=document.getElementById('editbtn');
+  eb.style.display=(sid!=='all'&&GH.token)?'':'none';
+}
+function filterBooks(q){_filterQ=q.toLowerCase();renderBooks();}
+function goHome(){_curSid='all';_editSid=null;_filterQ='';document.getElementById('srch').value='';renderAll();}
+
+function renderBooks(){
+  const grid=document.getElementById('bgrid');grid.innerHTML='';
+  let books=[];
+  if(_curSid==='all'){
+    db.subjects.forEach(s=>{db.books.filter(b=>b.sid===s.id).forEach(b=>books.push({b,s}));});
+    db.books.filter(b=>!db.subjects.find(s=>s.id===b.sid)).forEach(b=>books.push({b,s:null}));
+  } else {
+    const s=db.subjects.find(x=>x.id===_curSid);
+    if(s)books=db.books.filter(b=>b.sid===s.id).map(b=>({b,s}));
+  }
+  if(_filterQ)books=books.filter(({b})=>(b.title||'').toLowerCase().includes(_filterQ)||(b.author||'').toLowerCase().includes(_filterQ));
+  const vtit=document.getElementById('vtit');
+  vtit.textContent=_curSid==='all'?'すべての本':(db.subjects.find(x=>x.id===_curSid)||{}).name||'';
+  document.getElementById('vcnt').textContent=`　${books.length}冊`;
+  if(!books.length){
+    const d=document.createElement('div');d.className='empty';
+    d.innerHTML='<div class="eic">📚</div><div>本が登録されていません</div>';
+    if(!GH.repo){d.innerHTML+='<div style="margin-top:12px;font-size:13px">💡 まず右上の💾ボタンでGitHubの設定をしてください</div>';}
+    grid.appendChild(d);return;
+  }
+  books.forEach(({b,s})=>{
+    const card=document.createElement('div');
+    const isEdit=_editSid===b.sid;
+    card.className='bcard'+(isEdit?' ea':'');
+    // Cover
+    const covDiv=document.createElement('div');covDiv.className='bcov';
+    if(_covers[b.id]){const img=document.createElement('img');img.src=_covers[b.id];covDiv.appendChild(img);}
+    else if(b.hasCover){
+      const img=document.createElement('img');img.alt='';covDiv.appendChild(img);
+      loadCover(b.id).then(url=>{if(url)img.src=url;});
+    } else {const ph=document.createElement('div');ph.className='bph';ph.textContent=b.title||'';covDiv.appendChild(ph);}
+    card.appendChild(covDiv);
+    // Info
+    const inf=document.createElement('div');inf.className='binf';
+    if(s){const tag=document.createElement('div');tag.className='btag';tag.textContent=s.name;inf.appendChild(tag);}
+    const tit=document.createElement('div');tit.className='btit';
+    let tt=b.title||'';if(b.vol)tt+=' '+b.vol;if(b.toc&&b.toc.length)tt+=' 📑';
+    tit.textContent=tt;inf.appendChild(tit);
+    if(b.author){const m=document.createElement('div');m.className='bmeta';m.textContent=b.author+'先生';inf.appendChild(m);}
+    if(b.date){const m=document.createElement('div');m.className='bmeta';m.textContent=fmtDate(b);inf.appendChild(m);}
+    if(b.comment){const m=document.createElement('div');m.style.cssText='margin-top:3px;font-size:10px;color:var(--ac)';m.textContent='💬';inf.appendChild(m);}
+    card.appendChild(inf);
+    if(isEdit){
+      const eo=document.createElement('div');eo.className='beo';
+      const be=document.createElement('button');be.className='eob eob-e';be.textContent='✏️ 編集';be.onclick=e=>{e.stopPropagation();openEditBook(b.id);};
+      const bd=document.createElement('button');bd.className='eob eob-d';bd.textContent='🗑️ 削除';bd.onclick=e=>{e.stopPropagation();deleteBook(b.id);};
+      eo.appendChild(be);eo.appendChild(bd);card.appendChild(eo);
+    } else {card.onclick=()=>openBook(b.id);}
+    grid.appendChild(card);
+  });
+}
+function fmtDate(b){
+  if(!b.date)return'';const[y,m,d]=b.date.split('-');
+  return`${y}年${parseInt(m)}月${parseInt(d)}日　${b.dtype==='revision'?'改定':'リリース'}`;
+}
+
+/* =============================================
+   COVER LAZY LOAD
+============================================= */
+async function loadCover(bid){
+  if(_covers[bid])return _covers[bid];
+  const txt=await GH.readText(COVER_PATH(bid));
+  if(!txt)return null;
+  _covers[bid]=txt.trim();
+  return _covers[bid];
+}
+
+/* =============================================
+   BOOK PANEL
+============================================= */
+function openBook(bid){
+  const b=db.books.find(x=>x.id===bid);if(!b)return;
+  _bpBid=bid;
+  const s=db.subjects.find(x=>x.id===b.sid);
+  document.getElementById('bp-subj').textContent=s?s.name:'';
+  let title=b.title||'';if(b.vol)title+=' '+b.vol;if(b.author)title+=' '+b.author+'先生';
+  document.getElementById('bp-title').textContent=title;
+  renderBPToc(b);renderBPComment(b);
+  switchBPTab('toc');
+  document.getElementById('bpkw').value='';document.getElementById('bpresults').innerHTML='';
+  document.getElementById('bp').classList.add('on');document.getElementById('bpov').classList.add('on');
+}
+function closeBP(){document.getElementById('bp').classList.remove('on');document.getElementById('bpov').classList.remove('on');}
+
+function switchBPTab(tab){
+  const tabs=['toc','search','comment'];
+  tabs.forEach((t,i)=>{document.querySelectorAll('.bpt')[i].classList.toggle('on',t===tab);document.getElementById('bpt-'+t).classList.toggle('on',t===tab);});
+  if(tab==='search')setTimeout(()=>document.getElementById('bpkw').focus(),50);
+}
+
+function renderBPToc(b){
+  const c=document.getElementById('bpt-toc');c.innerHTML='';
+  if(b.tocUrl){
+    const a=document.createElement('a');a.href=b.tocUrl;a.target='_blank';
+    a.style.cssText='display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:10px;background:var(--acl);border:1px solid #b5d5cc;border-radius:8px;color:var(--ac);font-size:13px;text-decoration:none;margin-bottom:14px;font-weight:500';
+    a.innerHTML='📑 目次PDFを開く';c.appendChild(a);
+  }
+  if(b.toc&&b.toc.length){
+    b.toc.forEach(t=>{
+      const el=document.createElement('div');el.className='toci l'+(t.level||1);
+      const sp=document.createElement('span');sp.textContent=t.title;
+      const pg=document.createElement('span');pg.className='toci-pg';pg.textContent='p.'+(t.page+1);
+      el.appendChild(sp);el.appendChild(pg);c.appendChild(el);
+    });
+  } else if(!b.tocUrl){
+    c.innerHTML='<div class="bpempty">📑<br>目次が登録されていません</div>';
+  }
+}
+
+function renderBPComment(b){
+  const w=document.getElementById('bpcmt-wrap');w.innerHTML='';
+  const note=document.createElement('p');note.style.cssText='font-size:12px;color:var(--muted);margin-bottom:8px';
+  note.textContent=_editSid?'メモ・感想を入力できます':'コメントの編集は編集モードで行ってください';
+  const ta=document.createElement('textarea');
+  ta.style.cssText='width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:120px;line-height:1.7;font-family:var(--sans)';
+  ta.id='bpcmt-ta';ta.placeholder='コメントを入力…';ta.value=b.comment||'';ta.readOnly=!_editSid;
+  if(_editSid){ta.style.background='#fff';ta.onfocus=()=>ta.style.borderColor='var(--ac)';}
+  w.appendChild(note);w.appendChild(ta);
+  if(_editSid){
+    const row=document.createElement('div');row.style.cssText='margin-top:10px;text-align:right';
+    const btn=document.createElement('button');btn.className='btn btn-p btn-sm';btn.textContent='💾 保存';
+    btn.onclick=saveComment;row.appendChild(btn);w.appendChild(row);
+  }
+}
+function saveComment(){
+  const b=db.books.find(x=>x.id===_bpBid);if(!b)return;
+  b.comment=document.getElementById('bpcmt-ta').value;
+  saveLocalAndToGitHub('コメント更新');toast('✅ コメントを保存しました');
+}
+
+/* =============================================
+   KEYWORD SEARCH
+============================================= */
+async function doSearch(){
+  const kw=document.getElementById('bpkw').value.trim().toLowerCase();
+  const c=document.getElementById('bpresults');c.innerHTML='';if(!kw)return;
+  if(!_indexes[_bpBid]){
+    c.innerHTML='<div class="bpempty"><span class="spin">⌛</span> インデックス読み込み中…</div>';
+    const idx=await GH.readJSON(IDX_PATH(_bpBid));
+    if(idx){_indexes[_bpBid]=idx;}
+    else{c.innerHTML='<div class="bpempty">テキストインデックスがありません。<br>編集モードでPDFを登録してください。</div>';return;}
+  }
+  const index=_indexes[_bpBid];const results=[];
+  index.forEach(({p,t})=>{
+    const li=t.toLowerCase();if(!li.includes(kw))return;
+    const idx=li.indexOf(kw);const snip=t.slice(Math.max(0,idx-30),idx+kw.length+60);
+    results.push({p,snip,si:idx-Math.max(0,idx-30)});
+  });
+  if(!results.length){c.innerHTML=`<div class="bpempty">「${esc(kw)}」は見つかりませんでした</div>`;return;}
+  results.forEach(r=>{
+    const div=document.createElement('div');div.className='srhit';
+    const pg=document.createElement('div');pg.className='srpg';pg.textContent=r.p+'ページ';
+    const st=document.createElement('div');st.className='srtx';
+    st.innerHTML=esc(r.snip.slice(0,r.si))+`<mark>${esc(r.snip.slice(r.si,r.si+kw.length))}</mark>`+esc(r.snip.slice(r.si+kw.length))+'…';
+    div.appendChild(pg);div.appendChild(st);c.appendChild(div);
+  });
+  const note=document.createElement('div');note.style.cssText='color:var(--muted);font-size:11px;margin-top:8px';
+  note.textContent=results.length+'件ヒット';c.appendChild(note);
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+/* =============================================
+   PDF PROCESSING
+============================================= */
+async function processPdf(file){
+  const buf=await file.arrayBuffer();
+  const u8=new Uint8Array(buf);
+  showPdfMo('PDF読み込み中...',0.05);
+  try{
+    const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
+    const n=doc.numPages;
+    const pages=[];let total=0;
+    setPdfMo(`ページ数: ${n}ページ — テキスト抽出中...`,0.1);
+    for(let i=1;i<=n;i++){
+      setPdfMo(`テキスト抽出中 ${i}/${n}ページ`,0.1+i/n*0.5);
+      const pg=await doc.getPage(i);
+      const tc=await pg.getTextContent();
+      const txt=tc.items.map(x=>x.str).join(' ').trim();
+      pages.push({p:i,t:txt});
+      total+=txt.length;
+    }
+    doc.destroy();
+    const avg=n>0?total/n:0;
+    if(avg<30){
+      // 画像PDF検出 → OCR
+      setPdfMo(`📷 画像PDFを検出（平均${Math.round(avg)}文字/ページ）→ OCR開始`,0.6);
+      const ocrPages=await ocrPdf(u8,n);
+      hidePdfMo();
+      return ocrPages.length>0?ocrPages:pages; // OCR失敗時はテキストなしで登録
+    }
+    hidePdfMo();
+    return pages;
+  }catch(e){
+    hidePdfMo();
+    console.error('processPdf error',e);
+    toast('❌ PDF読み込みエラー: '+e.message);
+    return[];
+  }
+}
+
+async function ocrPdf(u8,pageCount){
+  // Tesseract.js v4 API
+  let worker;
+  try{
+    setPdfMo('OCR準備中（日本語辞書のダウンロード中…初回は時間がかかります）',0.6);
+    worker=await Tesseract.createWorker({
+      logger:m=>{
+        if(m.status==='recognizing text'){
+          const pct=0.6+m.progress*0.4;
+          setPdfMo(`OCR処理中 (${Math.round(m.progress*100)}%)`,pct);
+        } else if(m.status){
+          setPdfMo(m.status,0.62);
+        }
+      }
+    });
+    await worker.loadLanguage('jpn+eng');
+    await worker.initialize('jpn+eng');
+  }catch(e){
+    console.error('Tesseract init failed',e);
+    hidePdfMo();
+    toast('⚠️ OCR初期化失敗。ネット接続を確認してください。テキストなしで登録します。');
+    return[];
+  }
+  const pages=[];
+  let doc;
+  try{doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;}
+  catch(e){await worker.terminate();return[];}
+  for(let i=1;i<=pageCount;i++){
+    try{
+      setPdfMo(`OCR処理中 ${i}/${pageCount}ページ`,0.6+i/pageCount*0.35);
+      const pg=await doc.getPage(i);
+      const vp=pg.getViewport({scale:2.0});
+      const cv=document.createElement('canvas');
+      cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+      const ctx=cv.getContext('2d');
+      ctx.fillStyle='white';ctx.fillRect(0,0,cv.width,cv.height);
+      await pg.render({canvasContext:ctx,viewport:vp}).promise;
+      const res=await worker.recognize(cv);
+      const txt=(res.data&&res.data.text)||'';
+      pages.push({p:i,t:txt.replace(/\s+/g,' ').trim()});
+    }catch(e){
+      console.warn(`OCR page ${i} failed:`,e);
+      pages.push({p:i,t:''});
+    }
+  }
+  try{doc.destroy();}catch{}
+  try{await worker.terminate();}catch{}
+  return pages;
+}
+
+async function extractToc(file){
+  const buf=await file.arrayBuffer();const u8=new Uint8Array(buf);
+  try{
+    const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
+    const n=doc.numPages;let items=[];let totalChars=0;
+    for(let i=1;i<=n;i++){
+      const pg=await doc.getPage(i);const tc=await pg.getTextContent();
+      tc.items.forEach(x=>{const s=x.str.trim();if(s){items.push(s);totalChars+=s.length;}});
+    }
+    doc.destroy();
+    // 画像PDF目次の場合OCRで再試行
+    if(totalChars<50&&n>0){
+      document.getElementById('toc-hint').textContent='📑 画像PDF目次 — OCR処理中...';
+      const ocrPages=await ocrPdf(u8,n);
+      items=[];
+      ocrPages.forEach(pg=>{
+        pg.t.split(/\n|　/).forEach(line=>{const s=line.trim();if(s)items.push(s);});
+      });
+    }
+    // タイトルとページ番号を分離
+    const titles=[],pnums=[];
+    for(const item of items){
+      if(/^\d{1,4}$/.test(item))pnums.push(parseInt(item));
+      else if(item.length>1)titles.push(item);
+    }
+    if(!titles.length)return[];
+    return titles.map((title,i)=>({title,page:i<pnums.length?pnums[i]-1:i,level:1}));
+  }catch(e){console.error('extractToc error',e);return[];}
+}
+
+/* =============================================
+   DRAG & DROP
+============================================= */
+function dzOver(e,el){e.preventDefault();el.classList.add('ov');}
+function dzLeave(el){el.classList.remove('ov');}
+function dzDropImg(e,el){
+  e.preventDefault();dzLeave(el);
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('image/')){const dt=new DataTransfer();dt.items.add(f);document.getElementById('cov-f').files=dt.files;onCovFile({files:[f]});}
+}
+async function dzDropPdf(e,el){e.preventDefault();dzLeave(el);const f=Array.from(e.dataTransfer.files).find(x=>x.name.endsWith('.pdf'));if(f)await onPdfFile({files:[f]});}
+async function dzDropToc(e,el){e.preventDefault();dzLeave(el);const f=Array.from(e.dataTransfer.files).find(x=>x.name.endsWith('.pdf'));if(f)await onTocFile({files:[f]});}
+
+async function onCovFile(inp){
+  const f=inp.files[0];if(!f)return;
+  _tmpCover=await compressImage(f,200,267,0.75);
+  const img=document.getElementById('cov-prev');img.src=_tmpCover;img.style.display='';
+  document.getElementById('cov-hint').textContent='変更する場合はクリック';
+}
+function compressImage(file,mw,mh,q){
+  return new Promise(res=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      let w=img.width,h=img.height;
+      if(w>mw||h>mh){const r=Math.min(mw/w,mh/h);w=Math.round(w*r);h=Math.round(h*r);}
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',q));
+    };img.src=url;
+  });
+}
+function onVolChange(){document.getElementById('b-vol-free').style.display=document.getElementById('b-vol').value==='__free__'?'':'none';}
+
+async function onPdfFile(inp){
+  const f=inp.files[0];if(!f)return;
+  const st=document.getElementById('pdf-status');st.style.display='';
+  st.textContent='⌛ PDF処理中…（画像PDFの場合OCRを自動実行します。数分かかる場合があります）';
+  try{
+    _tmpIdx=await processPdf(f);
+    const hasText=_tmpIdx&&_tmpIdx.some(x=>x.t&&x.t.length>5);
+    if(_tmpIdx&&_tmpIdx.length>0){
+      if(hasText){
+        const totalChars=_tmpIdx.reduce((n,x)=>n+(x.t||'').length,0);
+        st.textContent=`✅ ${_tmpIdx.length}ページ抽出完了（約${Math.round(totalChars/1000)}千文字）`;
+        st.style.color='var(--ac)';
+      } else {
+        st.textContent=`⚠️ ${_tmpIdx.length}ページ処理完了（テキストが少ない — 検索精度が低い可能性があります）`;
+        st.style.color='#c07000';
+      }
+    } else {
+      st.textContent='❌ PDF処理に失敗しました。ファイルを確認してください。';
+      st.style.color='var(--warn)';
+    }
+  }catch(e){
+    st.textContent='❌ エラー: '+e.message;st.style.color='var(--warn)';
+  }
+}
+async function onTocFile(inp){
+  const f=inp.files[0];if(!f)return;
+  document.getElementById('toc-hint').textContent='⌛ 目次解析中...';
+  _tmpToc=await extractToc(f);
+  document.getElementById('toc-hint').textContent=_tmpToc.length?`📑 ${f.name}（${_tmpToc.length}件抽出）`:`📑 ${f.name}（解析失敗）`;
+}
+
+/* =============================================
+   EDIT MODE
+============================================= */
+let _pwTarget=null;
+function reqEdit(){
+  const s=db.subjects.find(x=>x.id===_curSid);if(!s)return;
+  if(s.pw){
+    _pwTarget={action:'edit',sid:s.id};
+    document.getElementById('pw-lbl').textContent=`「${s.name}」の編集パスワードを入力してください`;
+    document.getElementById('pw-in').value='';document.getElementById('pw-err').classList.add('h');
+    om('m-pw');setTimeout(()=>document.getElementById('pw-in').focus(),100);
+  } else {enterEdit(s.id);}
+}
+function subPw(){
+  const pw=document.getElementById('pw-in').value;if(!_pwTarget)return;
+  if(_pwTarget.action==='edit'){
+    const s=db.subjects.find(x=>x.id===_pwTarget.sid);
+    if(s&&s.pw===pw){cm('m-pw');enterEdit(s.id);}
+    else document.getElementById('pw-err').classList.remove('h');
+  }
+}
+function enterEdit(sid){
+  _editSid=sid;const s=db.subjects.find(x=>x.id===sid);
+  document.getElementById('ebar').classList.add('on');
+  document.getElementById('ebar-nm').textContent=s?s.name:'';
+  renderBooks();
+}
+function exitEdit(){_editSid=null;document.getElementById('ebar').classList.remove('on');renderBooks();}
+
+/* =============================================
+   ADD / EDIT BOOK
+============================================= */
+function openAddBook(){
+  if(!_editSid)return;
+  _editBid=null;_tmpCover=null;_tmpToc=null;_tmpIdx=null;
+  document.getElementById('m-book-t').textContent='📖 本を追加';
+  ['b-title','b-author','b-date','b-toc-url'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('b-vol').value='';document.getElementById('b-vol-free').style.display='none';
+  document.querySelector('input[name="b-dtype"][value="release"]').checked=true;
+  document.getElementById('cov-prev').style.display='none';document.getElementById('cov-hint').textContent='🖼️ クリックまたはドロップ';
+  document.getElementById('pdf-status').style.display='none';document.getElementById('toc-hint').textContent='📑 目次PDFをドロップ';
+  document.getElementById('pdf-req').style.display='';document.getElementById('pdf-opt').style.display='none';
+  document.getElementById('b-save-btn').textContent='追加する';document.getElementById('b-err').classList.add('h');
+  om('m-book');
+}
+function openEditBook(bid){
+  const b=db.books.find(x=>x.id===bid);if(!b)return;
+  _editBid=bid;_tmpCover=null;_tmpToc=null;_tmpIdx=null;
+  document.getElementById('m-book-t').textContent='✏️ 本を編集';
+  document.getElementById('b-title').value=b.title||'';
+  document.getElementById('b-author').value=b.author||'';
+  document.getElementById('b-date').value=b.date||'';
+  document.getElementById('b-toc-url').value=b.tocUrl||'';
+  document.querySelector(`input[name="b-dtype"][value="${b.dtype||'release'}"]`).checked=true;
+  const vols=['上巻','中巻','下巻'];
+  if(!b.vol){document.getElementById('b-vol').value='';document.getElementById('b-vol-free').style.display='none';}
+  else if(vols.includes(b.vol)){document.getElementById('b-vol').value=b.vol;document.getElementById('b-vol-free').style.display='none';}
+  else{document.getElementById('b-vol').value='__free__';document.getElementById('b-vol-free').value=b.vol;document.getElementById('b-vol-free').style.display='';}
+  if(b.hasCover&&_covers[bid]){const img=document.getElementById('cov-prev');img.src=_covers[bid];img.style.display='';document.getElementById('cov-hint').textContent='変更する場合はクリック';}
+  else{document.getElementById('cov-prev').style.display='none';document.getElementById('cov-hint').textContent='🖼️ クリックまたはドロップ';}
+  const st=document.getElementById('pdf-status');st.style.display='';
+  st.textContent=b.hasIdx?`✅ インデックス登録済み（${b.pageCount||'?'}ページ）`:'未登録 — PDFをドロップして再登録';
+  document.getElementById('toc-hint').textContent=b.toc&&b.toc.length?`📑 目次登録済み（${b.toc.length}件）`:'📑 目次PDFをドロップ';
+  document.getElementById('pdf-req').style.display='none';document.getElementById('pdf-opt').style.display='';
+  document.getElementById('b-save-btn').textContent='保存する';document.getElementById('b-err').classList.add('h');
+  om('m-book');
+}
+
+async function saveBook(){
+  const title=document.getElementById('b-title').value.trim();
+  if(!title){const e=document.getElementById('b-err');e.textContent='タイトルを入力してください';e.classList.remove('h');return;}
+  if(!_editBid&&!_tmpIdx){const e=document.getElementById('b-err');e.textContent='PDFを追加してください';e.classList.remove('h');return;}
+  const vol=document.getElementById('b-vol').value==='__free__'?document.getElementById('b-vol-free').value.trim():(document.getElementById('b-vol').value||'');
+  const author=document.getElementById('b-author').value.trim();
+  const date=document.getElementById('b-date').value;
+  const dtype=document.querySelector('input[name="b-dtype"]:checked').value;
+  const tocUrl=document.getElementById('b-toc-url').value.trim();
+  const btn=document.getElementById('b-save-btn');btn.disabled=true;btn.textContent='⌛ 保存中…';
+  if(_editBid){
+    const b=db.books.find(x=>x.id===_editBid);if(!b){btn.disabled=false;return;}
+    Object.assign(b,{title,vol,author,date,dtype,tocUrl});
+    if(_tmpCover){b.hasCover=true;_covers[_editBid]=_tmpCover;}
+    if(_tmpToc)b.toc=_tmpToc;
+    if(_tmpIdx){b.hasIdx=true;b.pageCount=_tmpIdx.length;_indexes[_editBid]=_tmpIdx;}
+  } else {
+    const id='bk_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+    const b={id,sid:_editSid,title,vol,author,date,dtype,tocUrl,hasCover:!!_tmpCover,toc:_tmpToc||[],hasIdx:!!_tmpIdx,pageCount:_tmpIdx?_tmpIdx.length:0,comment:''};
+    db.books.push(b);_editBid=id;
+    if(_tmpCover)_covers[id]=_tmpCover;
+    if(_tmpIdx)_indexes[id]=_tmpIdx;
+  }
+  const ok=await saveAllToGitHub('本を保存');
+  btn.disabled=false;
+  if(ok){cm('m-book');renderBooks();toast('✅ 保存しました');}
+  else{btn.textContent='保存する';}
+}
+
+async function deleteBook(bid){
+  if(!confirm('この本を削除しますか？'))return;
+  db.books=db.books.filter(x=>x.id!==bid);
+  delete _covers[bid];delete _indexes[bid];
+  await saveLocalAndToGitHub('本を削除');renderBooks();toast('🗑️ 削除しました');
+}
+
+/* =============================================
+   SAVE TO GITHUB
+============================================= */
+async function saveAllToGitHub(msg){
+  if(!GH.repo||!GH.token){
+    toast('⚠️ GitHubの設定が未完了です。💾ボタンから設定してください。');return false;
+  }
+  db.updated=new Date().toISOString();
+  setBar(0.2);
+  // 1. meta.json
+  const r=await GH.write(META_PATH,JSON.stringify(db,null,2),msg||'更新');
+  if(!r.ok){toast('❌ 保存失敗: '+r.err);hidebar();return false;}
+  setBar(0.5);
+  // 2. Covers
+  const covEntries=Object.entries(_covers);
+  for(let i=0;i<covEntries.length;i++){
+    const[bid,b64]=covEntries[i];if(b64)await GH.write(COVER_PATH(bid),b64,'カバー更新');
+    setBar(0.5+i/covEntries.length*0.25);
+  }
+  // 3. Indexes
+  const idxEntries=Object.entries(_indexes);
+  for(let i=0;i<idxEntries.length;i++){
+    const[bid,idx]=idxEntries[i];
+    if(idx&&idx.length)await GH.write(IDX_PATH(bid),JSON.stringify(idx),'インデックス更新');
+    setBar(0.75+i/idxEntries.length*0.25);
+  }
+  saveCache();setBar(1);setTimeout(hidebar,500);
+  return true;
+}
+async function saveLocalAndToGitHub(msg){
+  saveCache();if(GH.repo&&GH.token)return saveAllToGitHub(msg);return true;
+}
+
+/* =============================================
+   SETUP MODAL
+============================================= */
+function openSetup(){
+  document.getElementById('s-repo').value=GH.repo;
+  document.getElementById('s-token').value=GH.token;
+  document.getElementById('setup-st').textContent='';
+  const el=document.getElementById('gh-st');el.textContent='';
+  const idxCnt=db.books.filter(b=>b.hasIdx).length;
+  document.getElementById('setup-info').innerHTML=
+    `📚 教科: <strong>${db.subjects.length}</strong>　本: <strong>${db.books.length}</strong>　インデックス: <strong>${idxCnt}冊</strong><br>`+
+    `🔗 リポジトリ: ${GH.repo||'<em>未設定</em>'}`;
+  om('m-setup');
+}
+function saveSetup(){
+  const repo=document.getElementById('s-repo').value.trim();
+  const token=document.getElementById('s-token').value.trim();
+  localStorage.setItem(LS_REPO,repo);localStorage.setItem(LS_TOKEN,token);
+  document.getElementById('setup-st').textContent='✅ 保存しました';
+  toast('✅ 設定を保存しました。ページをリロードすると最新データを取得します。');
+  renderAll(); // edit button visibility update
+}
+async function saveAllFromSetup(){
+  const btn=document.querySelector('#m-setup .btn-p:nth-child(1)');
+  const st=document.getElementById('gh-st');st.textContent='🔄 保存中…';
+  const ok=await saveAllToGitHub();
+  if(ok){
+    const idxTotal=Object.values(_indexes).reduce((n,idx)=>n+(idx?idx.length:0),0);
+    st.textContent=`✅ 保存完了 (インデックス: ${idxTotal}ページ分)`;
+  }
+}
+
+/* =============================================
+   SUBJECT MANAGER
+============================================= */
+function openSubjMgr(){
+  const c=document.getElementById('slist');c.innerHTML='';
+  db.subjects.forEach(s=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bgc);border:1px solid var(--bdl);border-radius:var(--rs);margin-bottom:8px';
+    const nm=document.createElement('div');nm.style.cssText='font-family:var(--serif);font-size:15px;font-weight:500;flex:1';nm.textContent=s.name;
+    const sc=document.createElement('div');sc.style.cssText='font-size:12px;color:var(--muted)';sc.textContent=`${db.books.filter(b=>b.sid===s.id).length}冊 / PW: ${s.pw?'設定済':'なし'}`;
+    const dl=document.createElement('button');dl.className='btn btn-d btn-sm';dl.textContent='削除';
+    dl.onclick=()=>{if(confirm(`「${s.name}」を削除しますか？`)){db.subjects=db.subjects.filter(x=>x.id!==s.id);saveLocalAndToGitHub('教科削除');renderAll();openSubjMgr();}};
+    row.appendChild(nm);row.appendChild(sc);row.appendChild(dl);c.appendChild(row);
+  });
+  document.getElementById('serr').classList.add('h');
+  ['ns-name','ns-pw','ns-pw2'].forEach(id=>document.getElementById(id).value='');
+  om('m-subj');
+}
+function addSubj(){
+  const name=document.getElementById('ns-name').value.trim();
+  const pw=document.getElementById('ns-pw').value;const pw2=document.getElementById('ns-pw2').value;
+  const err=document.getElementById('serr');
+  if(!name){err.textContent='教科名を入力してください';err.classList.remove('h');return;}
+  if(pw!==pw2){err.textContent='パスワードが一致しません';err.classList.remove('h');return;}
+  err.classList.add('h');
+  db.subjects.push({id:'sj_'+Date.now(),name,pw});
+  saveLocalAndToGitHub('教科追加');renderAll();openSubjMgr();
+}
+
+/* =============================================
+   PDF PROGRESS MODAL
+============================================= */
+function showPdfMo(txt,ratio){
+  document.getElementById('pdfmo').classList.remove('h');
+  document.getElementById('pdfpb').style.width=(ratio*100)+'%';
+  document.getElementById('pdftxt').textContent=txt;
+}
+function setPdfMo(txt,ratio){document.getElementById('pdfpb').style.width=(ratio*100)+'%';document.getElementById('pdftxt').textContent=txt;}
+function hidePdfMo(){document.getElementById('pdfmo').classList.add('h');}
+
+/* =============================================
+   UI HELPERS
+============================================= */
+function setBar(r){document.getElementById('pgbar').style.transform=`scaleX(${r})`;}
+function hidebar(){document.getElementById('pgbar').style.transform='scaleX(0)';}
+function om(id){document.getElementById(id).classList.remove('h');}
+function cm(id){document.getElementById(id).classList.add('h');}
+let _toastT;
+function toast(msg,dur=3500){
+  const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');
+  clearTimeout(_toastT);_toastT=setTimeout(()=>el.classList.remove('on'),dur);
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeBP();['m-pw','m-book','m-subj','m-setup'].forEach(id=>cm(id));}
+});
+// GitHub保存ボタン（設定モーダル内）
+document.querySelector('#m-setup .btn-p[onclick="saveAllToGitHub()"]') && null;
+
+// saveAllToGitHub を設定モーダルから呼べるようにオーバーライド
+window.saveAllToGitHub = async function(msg) {
+  const st=document.getElementById('gh-st');
+  if(st)st.textContent='🔄 保存中…';
+  if(!GH.repo||!GH.token){
+    toast('⚠️ GitHubの設定が未完了です。');
+    if(st)st.textContent='';
+    return false;
+  }
+  db.updated=new Date().toISOString();
+  setBar(0.2);
+  const r=await GH.write(META_PATH,JSON.stringify(db,null,2),msg||'更新');
+  if(!r.ok){
+    toast('❌ 保存失敗: '+r.err);hidebar();
+    if(st)st.textContent='❌ '+r.err;
+    return false;
+  }
+  setBar(0.5);
+  const covEntries=Object.entries(_covers);
+  for(let i=0;i<covEntries.length;i++){
+    const[bid,b64]=covEntries[i];if(b64)await GH.write(COVER_PATH(bid),b64,'カバー更新');
+    setBar(0.5+i/Math.max(covEntries.length,1)*0.25);
+  }
+  const idxEntries=Object.entries(_indexes);
+  for(let i=0;i<idxEntries.length;i++){
+    const[bid,idx]=idxEntries[i];
+    if(idx&&idx.length)await GH.write(IDX_PATH(bid),JSON.stringify(idx),'インデックス更新');
+    setBar(0.75+i/Math.max(idxEntries.length,1)*0.25);
+  }
+  saveCache();setBar(1);setTimeout(hidebar,500);
+  const idxTotal=Object.values(_indexes).reduce((n,idx)=>n+(idx?idx.length:0),0);
+  if(st)st.textContent=`✅ 完了 (インデックス: ${idxTotal}ページ)`;
+  toast('✅ GitHubに保存しました');
+  return true;
+};
+
+/* =============================================
+   START
+============================================= */
+init();
+</script>
+</body>
+</html>
