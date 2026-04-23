@@ -938,6 +938,132 @@ async function onTocFile(inp){
    EDIT MODE
 ============================================= */
 let _pwTarget=null;
+/* =============================================
+   DRAG & DROP / FILE HANDLERS
+============================================= */
+function dzOver(e,el){e.preventDefault();el.classList.add('ov');}
+function dzLeave(el){el.classList.remove('ov');}
+
+function dzDropImg(e,el){
+  e.preventDefault();dzLeave(el);
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('image/')){
+    const dt=new DataTransfer();dt.items.add(f);
+    document.getElementById('cov-f').files=dt.files;
+    onCovFile({files:[f]});
+  }
+}
+async function dzDropPdf(e,el){
+  e.preventDefault();dzLeave(el);
+  const fs=Array.from(e.dataTransfer.files).filter(function(x){
+    return x.name.toLowerCase().endsWith('.pdf');
+  });
+  if(fs.length)await onPdfFile({files:fs,value:''});
+}
+async function dzDropToc(e,el){
+  e.preventDefault();dzLeave(el);
+  const f=Array.from(e.dataTransfer.files).find(function(x){
+    return x.name.toLowerCase().endsWith('.pdf');
+  });
+  if(f)await onTocFile({files:[f]});
+}
+
+async function onCovFile(inp){
+  const f=inp.files[0];if(!f)return;
+  _tmpCover=await compressImage(f,200,267,0.75);
+  const img=document.getElementById('cov-prev');
+  img.src=_tmpCover;img.style.display='';
+  document.getElementById('cov-hint').textContent='変更する場合はクリック';
+}
+
+function compressImage(file,mw,mh,q){
+  return new Promise(function(res){
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=function(){
+      let w=img.width,h=img.height;
+      if(w>mw||h>mh){const r=Math.min(mw/w,mh/h);w=Math.round(w*r);h=Math.round(h*r);}
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg',q));
+    };
+    img.src=url;
+  });
+}
+
+function onVolChange(){
+  document.getElementById('b-vol-free').style.display=
+    document.getElementById('b-vol').value==='__free__'?'':'none';
+}
+
+async function onPdfFile(inp){
+  const files=Array.from(inp.files);if(!files.length)return;
+  for(let fi=0;fi<files.length;fi++){
+    const f=files[fi];
+    const st=document.getElementById('pdf-status');
+    st.style.display='';
+    st.textContent='⌛ 「'+f.name+'」処理中…';
+    const pages=await processPdf(f);
+    if(pages&&pages.length>0){
+      const offset=_tmpPdfFiles.reduce(function(n,x){return n+x.pages.length;},0);
+      const offsetPages=pages.map(function(pg){return {p:pg.p+offset,t:pg.t};});
+      _tmpPdfFiles.push({name:f.name,pages:offsetPages});
+      _tmpIdx=_tmpPdfFiles.reduce(function(acc,x){return acc.concat(x.pages);},[]);
+      renderPdfList();
+      const totalChars=_tmpIdx.reduce(function(n,pg){return n+(pg.t?pg.t.length:0);},0);
+      const totalPages=_tmpIdx.length;
+      const hasText=totalChars>totalPages*3;
+      if(hasText){
+        st.style.color='var(--ac)';
+        st.textContent='✅ 計'+totalPages+'ページ・'+Math.round(totalChars/1000)+'千文字抽出完了';
+      }else{
+        st.style.color='#c0392b';
+        st.textContent='⚠️ '+totalPages+'ページ登録済（テキスト少/画像PDF）— 検索は制限されます';
+      }
+    }else{
+      const st2=document.getElementById('pdf-status');
+      st2.style.color='#c0392b';
+      st2.textContent='❌ 「'+f.name+'」テキスト抽出失敗';
+    }
+  }
+  if(inp.value!==undefined)inp.value='';
+}
+
+function renderPdfList(){
+  const list=document.getElementById('pdf-list');if(!list)return;
+  list.innerHTML='';
+  _tmpPdfFiles.forEach(function(pf,i){
+    const div=document.createElement('div');div.className='pdf-item';
+    const nm=document.createElement('span');nm.className='pdf-item-name';
+    nm.title=pf.name;nm.textContent='📄 '+pf.name;
+    const pg=document.createElement('span');pg.className='pdf-item-pg';
+    pg.textContent=pf.pages.length+'P';
+    const dl=document.createElement('button');dl.className='pdf-item-del';
+    dl.textContent='✕';dl.title='削除';
+    dl.onclick=function(){
+      _tmpPdfFiles.splice(i,1);
+      var off=0;
+      _tmpPdfFiles.forEach(function(x){
+        x.pages.forEach(function(p,j){p.p=off+j+1;});
+        off+=x.pages.length;
+      });
+      _tmpIdx=_tmpPdfFiles.reduce(function(acc,x){return acc.concat(x.pages);},[]);
+      renderPdfList();
+      const totalChars=_tmpIdx.reduce(function(n,pg){return n+(pg.t?pg.t.length:0);},0);
+      const st=document.getElementById('pdf-status');
+      if(_tmpIdx.length>0){
+        st.textContent='✅ 計'+_tmpIdx.length+'ページ・'+Math.round(totalChars/1000)+'千文字';
+      }else{
+        st.style.display='none';
+      }
+    };
+    div.appendChild(nm);div.appendChild(pg);div.appendChild(dl);
+    list.appendChild(div);
+  });
+}
+
+
 function reqEdit(){
   const s=db.subjects.find(x=>x.id===_curSid);if(!s)return;
   if(s.pw){
