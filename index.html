@@ -648,52 +648,68 @@ async function processPdf(file){
     const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
     const n=doc.numPages;
     const pages=[];
-    let emptyCount=0;
+    let emptyCount=0,totalChars=0;
 
     for(let i=1;i<=n;i++){
-      setPdfMo(`テキスト抽出中 ${i}/${n}ページ`,i/n*0.7);
+      setPdfMo('テキスト抽出中 '+i+'/'+n+'ページ',i/n*0.7);
       const pg=await doc.getPage(i);
       const tc=await pg.getTextContent();
-      // 空白・制御文字を除いた有効文字数で判定
-      const cleaned=tc.items.map(x=>x.str).join('').replace(/[\s　 ]/g,'');
-      const fullTxt=tc.items.map(x=>x.str).join(' ').trim();
-      pages.push({p:i,t:fullTxt,_hasText:cleaned.length>3});
-      if(cleaned.length<=3)emptyCount++;
+      const raw=tc.items.map(function(x){return x.str;}).join('');
+      // 空白類を除いた有効文字数
+      let cleaned='';
+      for(let ci=0;ci<raw.length;ci++){
+        const cc=raw.charCodeAt(ci);
+        if(cc>32&&cc!==0x3000&&cc!==0x00A0)cleaned+=raw[ci];
+      }
+      const fullTxt=tc.items.map(function(x){return x.str;}).join(' ').trim();
+      const hasText=cleaned.length>=5;
+      pages.push({p:i,t:fullTxt,_hasText:hasText,_chars:cleaned.length});
+      if(!hasText)emptyCount++;
+      totalChars+=cleaned.length;
     }
     doc.destroy();
+    console.log('PDF抽出: '+n+'P 総文字='+totalChars+' 空P='+emptyCount);
 
-    // ★ 半分以上のページにテキストがない → 画像PDF
-    const imageRatio=emptyCount/n;
-    if(imageRatio>=0.5){
-      setPdfMo(`画像PDF検出(${Math.round(imageRatio*100)}%が画像) — OCR開始`,0.7);
-      const ocrPages=await ocrPdf(u8,n,pages);
-      hidePdfMo();return ocrPages;
+    // 全ページ空 → 完全な画像PDF
+    if(emptyCount===n){
+      setPdfMo('全ページ画像PDF — OCR開始',0.7);
+      const ocrP=await ocrPdf(u8,n,pages);
+      hidePdfMo();return ocrP;
     }
-
-    // ★ 混在PDF：テキストが空のページだけOCR補完
-    const needsOcr=pages.filter(p=>!p._hasText);
-    if(needsOcr.length>0&&needsOcr.length<=Math.ceil(n*0.4)){
-      setPdfMo(`混在PDF — 画像ページ${needsOcr.length}件をOCR補完`,0.7);
-      const ocrResult=await ocrSelectPages(u8,needsOcr.map(p=>p.p),pages);
+    // 60%超が空 → 画像PDF主体
+    if(emptyCount/n>0.6){
+      setPdfMo('画像PDF('+(Math.round(emptyCount/n*100))+'%) — OCR開始',0.7);
+      const ocrP=await ocrPdf(u8,n,pages);
+      hidePdfMo();return ocrP;
+    }
+    // 一部のみ画像 → 画像ページだけOCR補完
+    const needsOcr=pages.filter(function(p){return !p._hasText;});
+    if(needsOcr.length>0&&needsOcr.length<n*0.6){
+      setPdfMo('混在PDF — 画像'+needsOcr.length+'PをOCR補完',0.7);
+      const ocrR=await ocrSelectPages(u8,needsOcr.map(function(p){return p.p;}),pages);
       hidePdfMo();
-      // OCR結果で上書き
-      return pages.map(p=>({p:p.p,t:p._hasText?p.t:(ocrResult[p.p]||p.t)}));
+      return pages.map(function(p){return {p:p.p,t:p._hasText?p.t:(ocrR[p.p]||'')};});
     }
-
     hidePdfMo();
-    return pages.map(({p,t})=>({p,t}));
+    return pages.map(function(p){return {p:p.p,t:p.t};});
   }catch(e){hidePdfMo();console.error('processPdf error:',e);return[];}
 }
 
 // ★ Tesseract workerを生成（v5対応）
 async function makeTesseractWorker(){
-  // Tesseract.js v5: createWorker(lang, oem, options)
-  const opts={logger:()=>{}};
-  try{return await Tesseract.createWorker('jpn',1,opts);}
-  catch(e){
-    console.warn('jpn worker失敗, eng試行:',e.message);
-    try{return await Tesseract.createWorker('eng',1,opts);}
-    catch(e2){console.error('Tesseract初期化失敗:',e2.message);return null;}
+  // Tesseract.js v5 API
+  try{
+    var w=await Tesseract.createWorker('jpn');
+    return w;
+  }catch(e){
+    console.warn('jpn失敗:',e.message||e);
+    try{
+      var w2=await Tesseract.createWorker('eng');
+      return w2;
+    }catch(e2){
+      console.error('Tesseract初期化失敗:',e2.message||e2);
+      return null;
+    }
   }
 }
 
@@ -772,183 +788,149 @@ async function extractToc(file){
     const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
     const n=doc.numPages;
 
-    // Y座標でグループ化して行単位に整理
-    const allLines=[];
+    // === Step1: 全ページから全アイテムを収集（X,Y座標付き）===
+    const allItems=[];
     for(let i=1;i<=n;i++){
-      const pg=await doc.getPage(i);const tc=await pg.getTextContent();
-      const rowMap={};
+      const pg=await doc.getPage(i);
+      const tc=await pg.getTextContent();
+      const vp=pg.getViewport({scale:1});
+      const h=vp.height;
       tc.items.forEach(x=>{
-        if(!x.str.trim())return;
-        const y=Math.round(x.transform[5]/2)*2;
-        if(!rowMap[y])rowMap[y]=[];
-        rowMap[y].push(x.str);
-      });
-      Object.keys(rowMap).sort((a,b)=>parseFloat(b)-parseFloat(a)).forEach(y=>{
-        const line=rowMap[y].join('').trim();
-        if(line)allLines.push(line);
+        const s=x.str.trim();if(!s)return;
+        const x_pos=x.transform[4];
+        const y_pos=h-x.transform[5];// PDF座標を画面座標に変換（上が小さい）
+        allItems.push({s,x:x_pos,y:y_pos,page:i});
       });
     }
     doc.destroy();
-    if(!allLines.length)return[];
+    if(!allItems.length)return[];
 
-    // ============================================================
-    // フォーマット自動検出
-    // ============================================================
+    // === Step2: Y座標でグループ化（同じ行のアイテムをまとめる）===
+    const LINE_THRESH=4;// 4pt以内は同じ行
+    allItems.sort((a,b)=>a.page-b.page||a.y-b.y||a.x-b.x);
+    const lines=[];
+    let curLine=null,curY=-999,curPage=-1;
+    for(const item of allItems){
+      if(item.page!==curPage||Math.abs(item.y-curY)>LINE_THRESH){
+        if(curLine)lines.push(curLine);
+        curLine={text:'',x:item.x,y:item.y,page:item.page};
+        curY=item.y;curPage=item.page;
+      }
+      curLine.text+=(curLine.text&&item.x-curLine.x-curLine.text.length*6>8?' ':'')+item.s;
+    }
+    if(curLine)lines.push(curLine);
 
-    // 「前半タイトル＋後半ページ番号」形式を検出
-    // 例：生物_上_目次.pdf のような形式
-    const pureNums=allLines.filter(l=>/^\d+$/.test(l.trim()));
-    const textLines=allLines.filter(l=>!/^\d+$/.test(l.trim())&&l.trim().length>=1);
+    // === Step3: 各行をテキスト行と数字行に分類 ===
+    const textLines=[],numLines=[];
+    for(const ln of lines){
+      const t=ln.text.trim();
+      if(!t)continue;
+      if(/^\d+$/.test(t)){numLines.push({...ln,num:parseInt(t)});}
+      else{textLines.push({...ln});}
+    }
 
-    // ページ番号が全体の20%以上かつタイトルと数が近い → 前後分離形式
-    if(pureNums.length>0&&pureNums.length/allLines.length>=0.2&&
-       Math.abs(textLines.length-pureNums.length)<=Math.max(4,textLines.length*0.2)){
-      const pageNums=pureNums.map(l=>parseInt(l.trim()));
-      const result=textLines.map((title,i)=>{
-        // 「数字　テキスト」の場合は数字を除いてタイトルだけにする
-        const m=title.match(/^\d+[\s\u3000]+(.+)$/);
-        const cleanTitle=m?m[1].trim():title.trim();
-        // 階層判定：行頭の数字が1から始まる最初のグループは章、以降は節
-        return{title:cleanTitle,page:i<pageNums.length?pageNums[i]-1:i,level:1};
-      });
-      if(result.length>0){
-        console.log('TOC: 前後分離形式で解析 '+result.length+'件');
+    // === Step4: フォーマット判定と解析 ===
+
+    // [A] 前後分離形式：タイトル群 → ページ番号群（生物_上_目次.pdfのケース）
+    // 特徴：数字行が全て後半に集中している
+    if(numLines.length>=3){
+      const nums=numLines.map(l=>l.num).sort((a,b)=>a-b);
+      const texts=textLines;
+
+      // 数字が昇順に並んでいる（ページ番号らしい）かチェック
+      const isAscending=nums.every((v,i)=>i===0||v>=nums[i-1]);
+      // ページ番号の範囲が妥当（1〜9999）
+      const pageRange=nums[nums.length-1]-nums[0];
+      const looksLikePages=isAscending&&pageRange>0&&nums[0]>=1;
+
+      if(looksLikePages&&Math.abs(texts.length-nums.length)<=Math.max(5,texts.length*0.25)){
+        const result=texts.map((tl,i)=>{
+          const raw=tl.text.trim();
+          // 行頭の「数字　」パターンを除去（章番号は消さない、タイトルとして保持）
+          return{title:raw,page:i<nums.length?nums[i]-1:i,level:detectLevel(raw)};
+        });
+        console.log('TOC[A] 前後分離:',result.length,'件');
         return result;
       }
     }
 
-    // 「タイトル　ページ番号」同一行形式
-    // 例：「生命の起源　2」「生命の起源 ........... 2」
-    const inlineEntries=[];
-    for(const line of allLines){
-      // 末尾の数字を抽出（タイトル部分と分離）
-      const m=line.match(/^(.+?)[\s　\.·\u30FB\u00B7]{2,}(\d+)\s*$/);
+    // [B] インライン形式：「タイトル .... ページ番号」
+    const inlineResults=[];
+    for(const ln of lines){
+      const t=ln.text.trim();
+      // 末尾の数字（2文字以上の空白または点線の後）
+      const m=t.match(/^(.+?)\s{2,}(\d+)\s*$/) ||
+              t.match(/^(.+?)[\.·・]{3,}(\d+)\s*$/) ||
+              t.match(/^(.+?)\u3000+(\d+)\s*$/);
       if(m){
-        const title=m[1].replace(/[\s　]+$/,'').trim();
-        const page=parseInt(m[2]);
-        if(title.length>=1&&page>0&&page<10000)
-          inlineEntries.push({title,page:page-1,level:1});
+        const title=m[1].trim();const page=parseInt(m[2]);
+        if(title&&page>0&&page<9999)
+          inlineResults.push({title,page:page-1,level:detectLevel(title)});
       }
     }
-    if(inlineEntries.length>0){
-      console.log('TOC: インライン形式で解析 '+inlineEntries.length+'件');
-      return inlineEntries;
+    if(inlineResults.length>=3){
+      console.log('TOC[B] インライン:',inlineResults.length,'件');
+      return inlineResults;
     }
 
-    // 「行頭数字 タイトル」形式（数字がページ番号ではなく章番号の場合）
-    // ページ番号が別に存在するか確認
-    const headingLines=allLines.filter(l=>/^\d+[\s　]/.test(l));
-    if(headingLines.length>0&&pureNums.length>0){
-      const pageNums=pureNums.map(l=>parseInt(l));
-      const result=headingLines.map((line,i)=>{
-        const m=line.match(/^\d+[\s　]+(.+)$/);
-        const title=m?m[1].trim():line.trim();
-        return{title,page:i<pageNums.length?pageNums[i]-1:i,level:1};
-      });
-      if(result.length>0){
-        console.log('TOC: 見出し番号+ページ番号形式で解析 '+result.length+'件');
-        return result;
+    // [C] 数字+テキスト形式：「2 生命の起源」（数字がページ番号）
+    // numLinesを使ってtextLinesとY座標で対応付け
+    if(numLines.length>=3&&textLines.length>=3){
+      const pairs=[];
+      for(const tl of textLines){
+        // 同じページ・近いY座標の数字行を探す
+        const candidates=numLines.filter(nl=>
+          nl.page===tl.page&&Math.abs(nl.y-tl.y)<LINE_THRESH*3
+        );
+        if(candidates.length===1){
+          pairs.push({title:tl.text.trim(),page:candidates[0].num-1,level:detectLevel(tl.text)});
+        }
+      }
+      if(pairs.length>=3){
+        console.log('TOC[C] 対応付け:',pairs.length,'件');
+        return pairs;
       }
     }
 
-    // 最終フォールバック：テキスト行をそのまま
-    console.log('TOC: フォールバック解析 '+textLines.length+'件');
-    return textLines.slice(0,100).map((title,i)=>({title,page:i,level:1}));
-
-  }catch(e){console.error('extractToc error',e);return[];}
-}
-
-/* =============================================
-   DRAG & DROP
-============================================= */
-function dzOver(e,el){e.preventDefault();el.classList.add('ov');}
-function dzLeave(el){el.classList.remove('ov');}
-function dzDropImg(e,el){
-  e.preventDefault();dzLeave(el);
-  const f=e.dataTransfer.files[0];
-  if(f&&f.type.startsWith('image/')){const dt=new DataTransfer();dt.items.add(f);document.getElementById('cov-f').files=dt.files;onCovFile({files:[f]});}
-}
-async function dzDropPdf(e,el){e.preventDefault();dzLeave(el);const fs=Array.from(e.dataTransfer.files).filter(x=>x.name.toLowerCase().endsWith('.pdf'));if(fs.length)await onPdfFile({files:fs,value:''});}
-async function dzDropToc(e,el){e.preventDefault();dzLeave(el);const f=Array.from(e.dataTransfer.files).find(x=>x.name.endsWith('.pdf'));if(f)await onTocFile({files:[f]});}
-
-async function onCovFile(inp){
-  const f=inp.files[0];if(!f)return;
-  _tmpCover=await compressImage(f,200,267,0.75);
-  const img=document.getElementById('cov-prev');img.src=_tmpCover;img.style.display='';
-  document.getElementById('cov-hint').textContent='変更する場合はクリック';
-}
-function compressImage(file,mw,mh,q){
-  return new Promise(res=>{
-    const img=new Image(),url=URL.createObjectURL(file);
-    img.onload=()=>{
-      let w=img.width,h=img.height;
-      if(w>mw||h>mh){const r=Math.min(mw/w,mh/h);w=Math.round(w*r);h=Math.round(h*r);}
-      const c=document.createElement('canvas');c.width=w;c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',q));
-    };img.src=url;
-  });
-}
-function onVolChange(){document.getElementById('b-vol-free').style.display=document.getElementById('b-vol').value==='__free__'?'':'none';}
-
-async function onPdfFile(inp){
-  const files=Array.from(inp.files);if(!files.length)return;
-  for(const f of files){
-    const st=document.getElementById('pdf-status');st.style.display='';
-    st.textContent=`⌛ 「${f.name}」処理中…`;
-    const pages=await processPdf(f);
-    if(pages&&pages.length>0){
-      // ページ番号をオフセット（既存ページ数の続きにする）
-      const offset=_tmpPdfFiles.reduce((n,x)=>n+x.pages.length,0);
-      const offsetPages=pages.map(pg=>({p:pg.p+offset,t:pg.t}));
-      _tmpPdfFiles.push({name:f.name,pages:offsetPages});
-      // _tmpIdx を全ファイルのマージ結果に更新
-      _tmpIdx=_tmpPdfFiles.flatMap(x=>x.pages);
-      // UI更新
-      renderPdfList();
-      // 文字数カウント（バグ修正：全ページのtextを合計）
-      const totalChars=_tmpIdx.reduce((n,pg)=>n+(pg.t?pg.t.length:0),0);
-      const totalPages=_tmpIdx.length;
-      st.textContent=`✅ 計${totalPages}ページ・${Math.round(totalChars/1000)}千文字抽出完了`;
-    } else {
-      st.textContent=`⚠️ 「${f.name}」テキスト0件（画像PDF → OCRを試みました）`;
+    // [D] フォールバック：テキスト行をそのまま（ページ番号なし）
+    if(textLines.length>0){
+      console.log('TOC[D] フォールバック:',textLines.length,'件');
+      return textLines.slice(0,200).map((tl,i)=>({
+        title:tl.text.trim(),page:i,level:detectLevel(tl.text)
+      }));
     }
+
+    return[];
+  }catch(e){console.error('extractToc error:',e);return[];}
+}
+
+function detectLevel(title){
+  // 大項目：章レベル（「1 〇〇と進化」のような短い区切りタイトル）
+  // 小項目：節レベル（より詳細なタイトル）
+  // 簡易判定：先頭が単独数字+スペースなら節、それ以外は章
+  if(/^\d+[\s\u3000]/.test(title)){
+    const num=parseInt(title);
+    if(num<=3)return 1;// 章（1〜3）
+    return 2;// 節（4以上）
   }
-  inp.value=''; // 同じファイルを再登録できるようリセット
+  return 1;
 }
 
-function renderPdfList(){
-  const list=document.getElementById('pdf-list');if(!list)return;
-  list.innerHTML='';
-  _tmpPdfFiles.forEach((pf,i)=>{
-    const div=document.createElement('div');div.className='pdf-item';
-    const nm=document.createElement('span');nm.className='pdf-item-name';nm.title=pf.name;nm.textContent='📄 '+pf.name;
-    const pg=document.createElement('span');pg.className='pdf-item-pg';pg.textContent=pf.pages.length+'P';
-    const dl=document.createElement('button');dl.className='pdf-item-del';dl.textContent='✕';dl.title='削除';
-    dl.onclick=()=>{
-      _tmpPdfFiles.splice(i,1);
-      // ページ番号を振り直し
-      let off=0;
-      _tmpPdfFiles.forEach(x=>{x.pages.forEach((pg,j)=>{pg.p=off+j+1;});off+=x.pages.length;});
-      _tmpIdx=_tmpPdfFiles.flatMap(x=>x.pages);
-      renderPdfList();
-      const totalChars=_tmpIdx.reduce((n,pg)=>n+(pg.t?pg.t.length:0),0);
-      const st=document.getElementById('pdf-status');
-      if(_tmpIdx.length>0)st.textContent=`✅ 計${_tmpIdx.length}ページ・${Math.round(totalChars/1000)}千文字`;
-      else{st.style.display='none';}
-    };
-    div.appendChild(nm);div.appendChild(pg);div.appendChild(dl);list.appendChild(div);
-  });
-}
 async function onTocFile(inp){
   const f=inp.files[0];if(!f)return;
   document.getElementById('toc-hint').textContent='⌛ 目次解析中...';
   _tmpToc=await extractToc(f);
-  if(_tmpToc.length){
+  if(_tmpToc&&_tmpToc.length>=1){
     document.getElementById('toc-hint').textContent=`📑 ${f.name}（${_tmpToc.length}件抽出）`;
+    // 解析内容をコンソールで確認可能
+    console.log('TOC抽出結果:',_tmpToc.slice(0,5));
   } else {
-    // ★ 解析失敗時はヒントを表示
+    // ★ 解析失敗時：詳細なヒントを表示
     document.getElementById('toc-hint').innerHTML=
-      `⚠️ 自動解析できませんでした<br><small style="color:var(--muted)">目次URLを入力するか、手動で登録してください</small>`;
+      `⚠️ 自動解析できませんでした<br>`+
+      `<small style="color:var(--muted)">💡 下の「目次URL」欄にPDFの共有リンクを貼ると目次PDFをリンクで開けます</small>`;
+    // 生テキストをコンソール出力（デバッグ用）
+    console.warn('TOC解析失敗 - PDFから抽出した生テキストを確認してください');
   }
 }
 
