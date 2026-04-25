@@ -84,6 +84,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .toci:hover{background:var(--acl)}
 .toci.l2{padding-left:20px;font-size:12px}.toci.l3{padding-left:32px;font-size:11px}
 .toci-pg{font-size:11px;color:var(--muted);flex-shrink:0;margin-left:8px}
+.toci.hd{font-weight:700;color:var(--ac);font-size:13px;margin-top:6px;background:none;cursor:default}
+.toci.hd:hover{background:none}
 /* Search */
 .srchrow{display:flex;gap:8px;margin-bottom:12px}
 #bpkw{flex:1;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text);outline:none;font-family:var(--sans)}
@@ -575,9 +577,12 @@ function renderBPToc(b){
   }
   if(b.toc&&b.toc.length){
     b.toc.forEach(t=>{
-      const el=document.createElement('div');el.className='toci l'+(t.level||1);
+      const isHdr=(t.page===null||t.page===undefined);
+      const el=document.createElement('div');
+      el.className='toci'+(isHdr?' hd':' l'+(t.level||1));
       const sp=document.createElement('span');sp.textContent=t.title;
-      const pg=document.createElement('span');pg.className='toci-pg';pg.textContent='p.'+(t.page+1);
+      const pg=document.createElement('span');pg.className='toci-pg';
+      pg.textContent=(!isHdr&&t.page>=0)?'p.'+(t.page+1):'';
       el.appendChild(sp);el.appendChild(pg);c.appendChild(el);
     });
   } else if(!b.tocUrl){
@@ -651,21 +656,27 @@ async function processPdf(file){
     let emptyCount=0,totalChars=0;
 
     for(let i=1;i<=n;i++){
-      setPdfMo('テキスト抽出中 '+i+'/'+n+'ページ',i/n*0.7);
-      const pg=await doc.getPage(i);
-      const tc=await pg.getTextContent();
-      const raw=tc.items.map(function(x){return x.str;}).join('');
-      // 空白類を除いた有効文字数
-      let cleaned='';
-      for(let ci=0;ci<raw.length;ci++){
-        const cc=raw.charCodeAt(ci);
-        if(cc>32&&cc!==0x3000&&cc!==0x00A0)cleaned+=raw[ci];
+      try{
+        setPdfMo('テキスト抽出中 '+i+'/'+n+'ページ',i/n*0.7);
+        const pg=await doc.getPage(i);
+        const tc=await pg.getTextContent();
+        const raw=tc.items.map(function(x){return x.str;}).join('');
+        // 空白類を除いた有効文字数
+        let cleaned='';
+        for(let ci=0;ci<raw.length;ci++){
+          const cc=raw.charCodeAt(ci);
+          if(cc>32&&cc!==0x3000&&cc!==0x00A0)cleaned+=raw[ci];
+        }
+        const fullTxt=tc.items.map(function(x){return x.str;}).join(' ').trim();
+        const hasText=cleaned.length>=5;
+        pages.push({p:i,t:fullTxt,_hasText:hasText,_chars:cleaned.length});
+        if(!hasText)emptyCount++;
+        totalChars+=cleaned.length;
+      }catch(pageErr){
+        console.warn('ページ'+i+'抽出エラー:',pageErr);
+        pages.push({p:i,t:'',_hasText:false,_chars:0});
+        emptyCount++;
       }
-      const fullTxt=tc.items.map(function(x){return x.str;}).join(' ').trim();
-      const hasText=cleaned.length>=5;
-      pages.push({p:i,t:fullTxt,_hasText:hasText,_chars:cleaned.length});
-      if(!hasText)emptyCount++;
-      totalChars+=cleaned.length;
     }
     doc.destroy();
     console.log('PDF抽出: '+n+'P 総文字='+totalChars+' 空P='+emptyCount);
@@ -692,7 +703,19 @@ async function processPdf(file){
     }
     hidePdfMo();
     return pages.map(function(p){return {p:p.p,t:p.t};});
-  }catch(e){hidePdfMo();console.error('processPdf error:',e);return[];}
+  }catch(e){
+    console.error('processPdf error:',e);
+    // PDF.js全体が失敗した場合もOCRを試みる
+    try{
+      setPdfMo('PDF解析エラー — OCRを試みます',0.5);
+      const doc2=await pdfjsLib.getDocument({data:u8,stopAtErrors:false,...PDFJS_OPTS}).promise;
+      const n2=doc2.numPages;doc2.destroy();
+      const ocrP=await ocrPdf(u8,n2,[]);
+      hidePdfMo();
+      if(ocrP&&ocrP.length>0)return ocrP;
+    }catch(e2){console.error('OCRフォールバック失敗:',e2);}
+    hidePdfMo();return[];
+  }
 }
 
 // ★ Tesseract workerを生成（v5対応）
@@ -791,22 +814,80 @@ async function extractToc(file){
     // === Step1: 全ページから全アイテムを収集（X,Y座標付き）===
     const allItems=[];
     for(let i=1;i<=n;i++){
-      const pg=await doc.getPage(i);
-      const tc=await pg.getTextContent();
-      const vp=pg.getViewport({scale:1});
-      const h=vp.height;
-      tc.items.forEach(x=>{
-        const s=x.str.trim();if(!s)return;
-        const x_pos=x.transform[4];
-        const y_pos=h-x.transform[5];// PDF座標を画面座標に変換（上が小さい）
-        allItems.push({s,x:x_pos,y:y_pos,page:i});
-      });
+      try{
+        const pg=await doc.getPage(i);
+        const tc=await pg.getTextContent();
+        const vp=pg.getViewport({scale:1});
+        const h=vp.height;
+        tc.items.forEach(x=>{
+          const s=x.str.trim();if(!s)return;
+          const xp=x.transform[4];
+          const yp=h-x.transform[5];
+          allItems.push({s,x:xp,y:yp,page:i,isNum:/^\d+$/.test(s)});
+        });
+      }catch(pe){console.warn('TOC page '+i+' error:',pe);}
     }
     doc.destroy();
     if(!allItems.length)return[];
 
-    // === Step2: Y座標でグループ化（同じ行のアイテムをまとめる）===
-    const LINE_THRESH=4;// 4pt以内は同じ行
+    // === [X] X座標列分離方式（2列レイアウト：左タイトル・右ページ番号）===
+    // 目次PDFのケース: 章見出し行はページ番号列に対応なし
+    const numItems=allItems.filter(i=>i.isNum);
+    const txtItems=allItems.filter(i=>!i.isNum);
+    if(numItems.length>=3&&txtItems.length>=numItems.length){
+      const numAvgX=numItems.reduce((s,i)=>s+i.x,0)/numItems.length;
+      const txtAvgX=txtItems.reduce((s,i)=>s+i.x,0)/txtItems.length;
+      if(numAvgX>txtAvgX+40){
+        // 数字アイテムが右列に集中 → 2列レイアウトと判断
+        // テキスト行をY座標でグループ化（数字を含まない列のみ）
+        const LT=5;
+        txtItems.sort((a,b)=>a.page-b.page||a.y-b.y||a.x-b.x);
+        const tLines=[];
+        let cur=null,curY=-999,curPg=-1;
+        for(const it of txtItems){
+          if(it.page!==curPg||Math.abs(it.y-curY)>LT){
+            if(cur)tLines.push(cur);
+            cur={text:it.s,x:it.x,y:it.y,page:it.page};
+            curY=it.y;curPg=it.page;
+          }else{
+            const gap=it.x-(cur.x+cur.text.length*7);
+            cur.text+=(gap>8?' ':'')+it.s;
+          }
+        }
+        if(cur)tLines.push(cur);
+
+        // 各ページの数字をY座標でリスト化
+        const numByPage={};
+        numItems.forEach(ni=>{
+          if(!numByPage[ni.page])numByPage[ni.page]=[];
+          numByPage[ni.page].push({y:ni.y,num:parseInt(ni.s),used:false});
+        });
+
+        // 各テキスト行に最近傍の数字を対応付け（Y距離 15pt 以内）
+        const result=[];
+        const Y_THRESH=15;
+        for(const tl of tLines){
+          const pnums=(numByPage[tl.page]||[]);
+          let bestIdx=-1,bestDist=Infinity;
+          pnums.forEach((pn,idx)=>{if(!pn.used){const d=Math.abs(pn.y-tl.y);if(d<bestDist){bestDist=d;bestIdx=idx;}}});
+          if(bestIdx>=0&&bestDist<Y_THRESH){
+            pnums[bestIdx].used=true;
+            result.push({title:tl.text.trim(),page:pnums[bestIdx].num-1,level:detectLevel(tl.text)});
+          }else{
+            // ページ番号なし = 章見出し
+            result.push({title:tl.text.trim(),page:null,level:1});
+          }
+        }
+        const valid=result.filter(r=>r.page!==null&&r.page>=0).length;
+        if(valid>=3){
+          console.log('TOC[X] X列分離:',result.length,'件（有効:',valid,'件）');
+          return result;
+        }
+      }
+    }
+
+    // === Step2: Y座標でグループ化（全アイテム）===
+    const LINE_THRESH=4;
     allItems.sort((a,b)=>a.page-b.page||a.y-b.y||a.x-b.x);
     const lines=[];
     let curLine=null,curY=-999,curPage=-1;
@@ -820,47 +901,19 @@ async function extractToc(file){
     }
     if(curLine)lines.push(curLine);
 
-    // === Step3: 各行をテキスト行と数字行に分類 ===
     const textLines=[],numLines=[];
     for(const ln of lines){
-      const t=ln.text.trim();
-      if(!t)continue;
+      const t=ln.text.trim();if(!t)continue;
       if(/^\d+$/.test(t)){numLines.push({...ln,num:parseInt(t)});}
       else{textLines.push({...ln});}
-    }
-
-    // === Step4: フォーマット判定と解析 ===
-
-    // [A] 前後分離形式：タイトル群 → ページ番号群（生物_上_目次.pdfのケース）
-    // 特徴：数字行が全て後半に集中している
-    if(numLines.length>=3){
-      const nums=numLines.map(l=>l.num).sort((a,b)=>a-b);
-      const texts=textLines;
-
-      // 数字が昇順に並んでいる（ページ番号らしい）かチェック
-      const isAscending=nums.every((v,i)=>i===0||v>=nums[i-1]);
-      // ページ番号の範囲が妥当（1〜9999）
-      const pageRange=nums[nums.length-1]-nums[0];
-      const looksLikePages=isAscending&&pageRange>0&&nums[0]>=1;
-
-      if(looksLikePages&&Math.abs(texts.length-nums.length)<=Math.max(5,texts.length*0.25)){
-        const result=texts.map((tl,i)=>{
-          const raw=tl.text.trim();
-          // 行頭の「数字　」パターンを除去（章番号は消さない、タイトルとして保持）
-          return{title:raw,page:i<nums.length?nums[i]-1:i,level:detectLevel(raw)};
-        });
-        console.log('TOC[A] 前後分離:',result.length,'件');
-        return result;
-      }
     }
 
     // [B] インライン形式：「タイトル .... ページ番号」
     const inlineResults=[];
     for(const ln of lines){
       const t=ln.text.trim();
-      // 末尾の数字（2文字以上の空白または点線の後）
-      const m=t.match(/^(.+?)\s{2,}(\d+)\s*$/) ||
-              t.match(/^(.+?)[\.·・]{3,}(\d+)\s*$/) ||
+      const m=t.match(/^(.+?)\s{2,}(\d+)\s*$/)||
+              t.match(/^(.+?)[\.·・]{3,}(\d+)\s*$/)||
               t.match(/^(.+?)\u3000+(\d+)\s*$/);
       if(m){
         const title=m[1].trim();const page=parseInt(m[2]);
@@ -868,50 +921,46 @@ async function extractToc(file){
           inlineResults.push({title,page:page-1,level:detectLevel(title)});
       }
     }
-    if(inlineResults.length>=3){
-      console.log('TOC[B] インライン:',inlineResults.length,'件');
-      return inlineResults;
+    if(inlineResults.length>=3){console.log('TOC[B] インライン:',inlineResults.length,'件');return inlineResults;}
+
+    // [A] 前後分離形式（カウントが近い場合のみ）
+    if(numLines.length>=3){
+      const nums=numLines.map(l=>l.num).sort((a,b)=>a-b);
+      const isAscending=nums.every((v,i)=>i===0||v>=nums[i-1]);
+      const looksLikePages=isAscending&&nums[nums.length-1]-nums[0]>0&&nums[0]>=1;
+      if(looksLikePages&&textLines.length===numLines.length){
+        const result=textLines.map((tl,i)=>({title:tl.text.trim(),page:nums[i]-1,level:detectLevel(tl.text)}));
+        console.log('TOC[A] 前後分離:',result.length,'件');return result;
+      }
     }
 
-    // [C] 数字+テキスト形式：「2 生命の起源」（数字がページ番号）
-    // numLinesを使ってtextLinesとY座標で対応付け
+    // [C] 同一ページ・近Y座標の対応付け
     if(numLines.length>=3&&textLines.length>=3){
       const pairs=[];
       for(const tl of textLines){
-        // 同じページ・近いY座標の数字行を探す
-        const candidates=numLines.filter(nl=>
-          nl.page===tl.page&&Math.abs(nl.y-tl.y)<LINE_THRESH*3
-        );
-        if(candidates.length===1){
-          pairs.push({title:tl.text.trim(),page:candidates[0].num-1,level:detectLevel(tl.text)});
-        }
+        const candidates=numLines.filter(nl=>nl.page===tl.page&&Math.abs(nl.y-tl.y)<LINE_THRESH*3);
+        if(candidates.length===1)pairs.push({title:tl.text.trim(),page:candidates[0].num-1,level:detectLevel(tl.text)});
       }
-      if(pairs.length>=3){
-        console.log('TOC[C] 対応付け:',pairs.length,'件');
-        return pairs;
-      }
+      if(pairs.length>=3){console.log('TOC[C] 対応付け:',pairs.length,'件');return pairs;}
     }
 
-    // [D] フォールバック：テキスト行をそのまま（ページ番号なし）
+    // [D] フォールバック
     if(textLines.length>0){
       console.log('TOC[D] フォールバック:',textLines.length,'件');
-      return textLines.slice(0,200).map((tl,i)=>({
-        title:tl.text.trim(),page:i,level:detectLevel(tl.text)
-      }));
+      return textLines.slice(0,200).map((tl,i)=>({title:tl.text.trim(),page:i,level:detectLevel(tl.text)}));
     }
-
     return[];
   }catch(e){console.error('extractToc error:',e);return[];}
 }
 
 function detectLevel(title){
-  // 大項目：章レベル（「1 〇〇と進化」のような短い区切りタイトル）
-  // 小項目：節レベル（より詳細なタイトル）
-  // 簡易判定：先頭が単独数字+スペースなら節、それ以外は章
+  // 「第X章」「第X節」形式
+  if(/^第\d+[章節]/.test(title))return 1;
+  // 先頭が単独数字+スペース/全角スペース
   if(/^\d+[\s\u3000]/.test(title)){
     const num=parseInt(title);
-    if(num<=3)return 1;// 章（1〜3）
-    return 2;// 節（4以上）
+    if(num<=3)return 1;// 1〜3は節レベル（目次の大区分）
+    return 2;// 4以上は小節
   }
   return 1;
 }
