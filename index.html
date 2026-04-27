@@ -1231,12 +1231,28 @@ async function onPdfFile(inp){
         st.textContent='✅ 計'+totalPages+'ページ・'+Math.round(totalChars/1000)+'千文字抽出完了';
       }else{
         st.style.color='#c0392b';
-        st.textContent='⚠️ '+totalPages+'ページ登録済（テキスト少/画像PDF）— 検索は制限されます';
+        st.textContent='⚠️ '+totalPages+'ページ登録済（テキスト少/画像PDF）— 本棚への登録は可能です。検索は画像PDFのためOCR処理が必要です。';
       }
     }else{
-      const st2=document.getElementById('pdf-status');
-      st2.style.color='#c0392b';
-      st2.textContent='❌ 「'+f.name+'」テキスト抽出失敗';
+      // 抽出ゼロでもページ数だけ取得して空スタブで登録
+      let pageCount=0;
+      try{
+        const buf2=await f.arrayBuffer();
+        const doc2=await pdfjsLib.getDocument({data:new Uint8Array(buf2),stopAtErrors:false}).promise;
+        pageCount=doc2.numPages;doc2.destroy();
+      }catch(e){console.warn('ページ数取得失敗:',e);}
+      if(pageCount>0){
+        const offset=_tmpPdfFiles.reduce(function(n,x){return n+x.pages.length;},0);
+        const stubPages=Array.from({length:pageCount},function(_,i){return{p:offset+i+1,t:''};});
+        _tmpPdfFiles.push({name:f.name,pages:stubPages});
+        _tmpIdx=_tmpPdfFiles.reduce(function(acc,x){return acc.concat(x.pages);},[]);
+        renderPdfList();
+        st.style.color='#c0392b';
+        st.textContent='⚠️ '+pageCount+'ページ登録済（テキスト抽出失敗・画像PDF）— 本棚への登録は可能です。検索にはOCR処理が必要です。';
+      }else{
+        st.style.color='#c0392b';
+        st.textContent='❌ 「'+f.name+'」を読み込めませんでした。PDFが壊れているか、対応していない形式の可能性があります。';
+      }
     }
   }
   if(inp.value!==undefined)inp.value='';
