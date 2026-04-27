@@ -1,0 +1,28 @@
+{
+  "v": 3,
+  "updated": "2026-04-27T09:45:25.553Z",
+  "subjects": [
+    {
+      "id": "sj_1776844796256",
+      "name": "理科",
+      "pw": "1004"
+    }
+  ],
+  "books": [
+    {
+      "id": "bk_1777283027530_nw4",
+      "sid": "sj_1776844796256",
+      "title": "高校生物",
+      "vol": "上巻",
+      "author": "村杉拓夢",
+      "date": "2026-03-01",
+      "dtype": "release",
+      "tocUrl": "",
+      "hasCover": true,
+      "toc": [],
+      "hasIdx": true,
+      "pageCount": 286,
+      "comment": ""
+    }
+  ]
+}
