@@ -86,7 +86,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .toci-pg{font-size:11px;color:var(--muted);flex-shrink:0;margin-left:8px}
 .toci.hd{font-weight:700;color:var(--ac);font-size:13px;margin-top:6px;background:none;cursor:default}
 .toci.hd:hover{background:none}
-/* Search */
+/* Manual TOC editor */
+#toc-manual-box{display:none;margin-top:10px;border:1px solid var(--bd);border-radius:var(--rs);background:#fff;overflow:hidden}
+#toc-manual-box.open{display:block}
+#toc-manual-hd{background:var(--acl);padding:8px 12px;font-size:12px;font-weight:600;color:var(--ac);display:flex;align-items:center;justify-content:space-between}
+#toc-manual-ta{width:100%;min-height:140px;padding:10px 12px;border:none;border-top:1px solid var(--bdl);font-size:12px;font-family:var(--sans);color:var(--text);resize:vertical;outline:none;line-height:1.8;display:block}
+#toc-manual-ta:focus{background:#FAFFF9}
+.toc-manual-acts{display:flex;gap:6px;padding:8px 10px;background:var(--bg);border-top:1px solid var(--bdl);align-items:center}
+.toc-btn-sm{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--bd);background:#fff;color:var(--mid);font-family:var(--sans)}
+.toc-btn-sm.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+.toc-btn-sm:hover{border-color:var(--ac);color:var(--ac)}
+.toc-btn-sm.pri:hover{background:var(--ach)}
+#toc-parse-hint{flex:1;font-size:11px;color:var(--muted)}
+.toc-add-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:10px;background:var(--bg);border:1px dashed var(--bd);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;margin-top:4px;transition:all .2s}
+.toc-add-btn:hover{border-color:var(--ac);color:var(--ac);background:var(--acl)}
 .srchrow{display:flex;gap:8px;margin-bottom:12px}
 #bpkw{flex:1;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text);outline:none;font-family:var(--sans)}
 #bpkw:focus{border-color:var(--ac);background:#fff}
@@ -295,6 +308,25 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
             <p id="toc-hint">📑 目次PDFをドロップ</p><small>ページ番号を自動解析</small>
           </div>
           <input type="file" id="toc-f" accept=".pdf" style="display:none" onchange="onTocFile(this)">
+          <!-- 手動目次入力エリア -->
+          <div id="toc-manual-box">
+            <div id="toc-manual-hd">
+              ✏️ 手動で目次を入力
+              <span style="font-weight:400;font-size:11px;color:var(--mid)">書式：タイトル 半角スペース ページ数（例：生命の起源 2）</span>
+            </div>
+            <textarea id="toc-manual-ta" placeholder="例：
+第1節 生命の起源と進化
+　生命の起源 2
+　細胞内共生説 6
+　生物の変遷 10
+第2節 有性生殖
+　生殖と染色体 16"></textarea>
+            <div class="toc-manual-acts">
+              <span id="toc-parse-hint">1行1項目・先頭スペースでインデント・末尾の数字がページ番号</span>
+              <button class="toc-btn-sm" onclick="clearManualToc()">クリア</button>
+              <button class="toc-btn-sm pri" onclick="applyManualToc()">✓ この内容を使う</button>
+            </div>
+          </div>
         </div>
         <div class="fg">
           <label class="fl">目次URL（任意）</label>
@@ -307,6 +339,29 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
     <div class="mft">
       <button class="btn btn-o" onclick="cm('m-book')">キャンセル</button>
       <button class="btn btn-p" id="b-save-btn" onclick="saveBook()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: パネル手動目次入力 -->
+<div class="mo h" id="m-toc-manual">
+  <div class="mb" style="max-width:520px">
+    <button class="mcl" onclick="cm('m-toc-manual')">✕</button>
+    <h2>✏️ 目次を手動で入力</h2>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">1行1項目で入力してください。行末の数字がページ番号になります。先頭にスペース・全角スペースを付けるとインデントされます。</p>
+    <div style="background:var(--bg);border:1px solid var(--bdl);border-radius:6px;padding:8px 12px;font-size:11px;color:var(--mid);margin-bottom:10px;line-height:2">
+      例）<br>
+      第1節 生命の起源と進化<br>
+      　生命の起源 2<br>
+      　細胞内共生説 6<br>
+      第2節 有性生殖<br>
+      　生殖と染色体 16
+    </div>
+    <textarea id="panel-toc-ta" style="width:100%;min-height:200px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;font-family:var(--sans);color:var(--text);resize:vertical;outline:none;line-height:1.9;background:#fff" placeholder="ここに目次を入力…"></textarea>
+    <div id="panel-toc-msg" style="font-size:12px;color:var(--ac);margin-top:6px;min-height:18px"></div>
+    <div class="mft" style="margin-top:14px">
+      <button class="btn btn-o" onclick="cm('m-toc-manual')">キャンセル</button>
+      <button class="btn btn-p" onclick="savePanelManualToc()">✓ 保存する</button>
     </div>
   </div>
 </div>
@@ -586,7 +641,15 @@ function renderBPToc(b){
       el.appendChild(sp);el.appendChild(pg);c.appendChild(el);
     });
   } else if(!b.tocUrl){
-    c.innerHTML='<div class="bpempty">📑<br>目次が登録されていません</div>';
+    const empty=document.createElement('div');empty.className='bpempty';empty.innerHTML='📑<br>目次が登録されていません';
+    c.appendChild(empty);
+    if(_editSid){
+      const addBtn=document.createElement('div');
+      addBtn.className='toc-add-btn';
+      addBtn.innerHTML='✏️ 手動で目次を入力する';
+      addBtn.onclick=()=>openPanelManualToc(b);
+      c.appendChild(addBtn);
+    }
   }
 }
 
@@ -984,15 +1047,102 @@ async function onTocFile(inp){
   _tmpToc=await extractToc(f);
   if(_tmpToc&&_tmpToc.length>=1){
     document.getElementById('toc-hint').textContent=`📑 ${f.name}（${_tmpToc.length}件抽出）`;
-    // 解析内容をコンソールで確認可能
+    document.getElementById('toc-manual-box').classList.remove('open');
     console.log('TOC抽出結果:',_tmpToc.slice(0,5));
   } else {
-    // ★ 解析失敗時：詳細なヒントを表示
     document.getElementById('toc-hint').innerHTML=
-      `⚠️ 自動解析できませんでした<br>`+
-      `<small style="color:var(--muted)">💡 下の「目次URL」欄にPDFの共有リンクを貼ると目次PDFをリンクで開けます</small>`;
-    // 生テキストをコンソール出力（デバッグ用）
-    console.warn('TOC解析失敗 - PDFから抽出した生テキストを確認してください');
+      `⚠️ 自動解析できませんでした &nbsp;<button class="toc-btn-sm" onclick="toggleManualToc()" style="vertical-align:middle">✏️ 手動で入力する</button>`;
+    document.getElementById('toc-manual-box').classList.add('open');
+    console.warn('TOC解析失敗');
+  }
+}
+
+function toggleManualToc(){
+  const box=document.getElementById('toc-manual-box');
+  box.classList.toggle('open');
+  if(box.classList.contains('open'))document.getElementById('toc-manual-ta').focus();
+}
+
+function clearManualToc(){
+  document.getElementById('toc-manual-ta').value='';
+  document.getElementById('toc-parse-hint').textContent='クリアしました';
+  _tmpToc=null;
+}
+
+// 手動入力テキストを目次配列にパース
+function parseManualToc(text){
+  const lines=text.split('\n');
+  const result=[];
+  for(let raw of lines){
+    const line=raw.replace(/\r/g,'');
+    if(!line.trim())continue;
+    // 先頭スペース/全角スペースの数でインデントレベルを判定
+    const indent=(line.match(/^[\s\u3000]+/)||[''])[0]
+      .replace(/\u3000/g,'  ').length;
+    const level=indent<2?1:indent<4?2:3;
+    const trimmed=line.trim();
+    // 末尾の数字をページ番号として抽出
+    const m=trimmed.match(/^(.+?)\s+(\d+)\s*$/);
+    if(m){
+      result.push({title:m[1].trim(),page:parseInt(m[2])-1,level});
+    } else {
+      // 数字なし = 見出し行
+      result.push({title:trimmed,page:null,level:1});
+    }
+  }
+  return result;
+}
+
+function applyManualToc(){
+  const text=document.getElementById('toc-manual-ta').value.trim();
+  if(!text){document.getElementById('toc-parse-hint').textContent='⚠️ 内容を入力してください';return;}
+  const parsed=parseManualToc(text);
+  const valid=parsed.filter(p=>p.page!==null).length;
+  if(parsed.length===0){document.getElementById('toc-parse-hint').textContent='⚠️ 解析できませんでした';return;}
+  _tmpToc=parsed;
+  document.getElementById('toc-hint').textContent=`✏️ 手動入力（${parsed.length}件・ページ番号付き:${valid}件）`;
+  document.getElementById('toc-parse-hint').textContent=`✓ ${parsed.length}件を登録しました`;
+  document.getElementById('toc-manual-box').classList.remove('open');
+}
+
+let _panelTocBid=null;
+function openPanelManualToc(b){
+  _panelTocBid=b.id;
+  const ta=document.getElementById('panel-toc-ta');
+  // 既存の目次があればテキスト形式に戻して表示
+  if(b.toc&&b.toc.length){
+    ta.value=b.toc.map(t=>{
+      const indent=t.level>1?'　':'';
+      const pg=t.page!==null?(' '+(t.page+1)):'';
+      return indent+t.title+pg;
+    }).join('\n');
+  } else {
+    ta.value='';
+  }
+  document.getElementById('panel-toc-msg').textContent='';
+  om('m-toc-manual');
+}
+
+async function savePanelManualToc(){
+  const text=document.getElementById('panel-toc-ta').value.trim();
+  const msg=document.getElementById('panel-toc-msg');
+  if(!text){msg.textContent='⚠️ 内容を入力してください';return;}
+  const parsed=parseManualToc(text);
+  if(!parsed.length){msg.textContent='⚠️ 解析できませんでした';return;}
+  const b=db.books.find(x=>x.id===_panelTocBid);
+  if(!b){msg.textContent='⚠️ 本が見つかりません';return;}
+  b.toc=parsed;
+  msg.style.color='var(--mid)';
+  msg.textContent='⌛ 保存中...';
+  const ok=await saveAllToGitHub('目次手動更新');
+  if(ok){
+    msg.style.color='var(--ac)';
+    msg.textContent=`✓ ${parsed.length}件を保存しました`;
+    renderBPToc(b);
+    setTimeout(()=>cm('m-toc-manual'),900);
+  }else{
+    msg.style.color='var(--warn)';
+    msg.textContent='保存失敗。⚙️設定からGitHub連携を確認してください。';
   }
 }
 
