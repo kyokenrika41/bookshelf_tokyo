@@ -422,8 +422,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 /* =============================================
    CONSTANTS
 ============================================= */
+// ★ Bug Fix: 閲覧者がlocalStorageを設定しなくてもデータを読めるようにデフォルトのリポジトリを設定
+const DEFAULT_REPO='kyokenrika41/bookshelf_tokyo';
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-const PDFJS_OPTS={cMapUrl:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',cMapPacked:true};
+// ★ Bug Fix: cdnjsにはcmapファイルが含まれていないため、jsDelivrを使用する
+const PDFJS_OPTS={cMapUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',cMapPacked:true,standardFontDataUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'};
 const LS_REPO='bk3_repo',LS_TOKEN='bk3_token',LS_CACHE='bk3_cache',LS_CACHE_TS='bk3_cache_ts';
 const META_PATH='data/meta.json';
 const COVER_PATH=id=>`data/covers/${id}.txt`;
@@ -486,6 +489,8 @@ let _editBid=null;
 ============================================= */
 async function init(){
   setBar(0.1);
+  // ★ Bug Fix: GH.repoが未設定の場合はデフォルトのリポジトリを自動設定（閲覧者でも動作するように）
+  if(!GH.repo&&DEFAULT_REPO)localStorage.setItem(LS_REPO,DEFAULT_REPO);
   if(GH.repo){
     // GitHub優先、キャッシュが5分以内なら使用
     const tsStr=localStorage.getItem(LS_CACHE_TS);
@@ -760,20 +765,21 @@ async function processPdf(file){
     // 全ページ空 → 完全な画像PDF
     if(emptyCount===n){
       setPdfMo('全ページ画像PDF — OCR開始',0.7);
-      const ocrP=await ocrPdf(u8,n,pages);
+      // ★ Bug Fix: PDF.jsがバッファを内部で消費した可能性があるため、元のbufから新しいUint8Arrayを生成する
+      const ocrP=await ocrPdf(new Uint8Array(buf),n,pages);
       hidePdfMo();return ocrP;
     }
     // 60%超が空 → 画像PDF主体
     if(emptyCount/n>0.6){
       setPdfMo('画像PDF('+(Math.round(emptyCount/n*100))+'%) — OCR開始',0.7);
-      const ocrP=await ocrPdf(u8,n,pages);
+      const ocrP=await ocrPdf(new Uint8Array(buf),n,pages);
       hidePdfMo();return ocrP;
     }
     // 一部のみ画像 → 画像ページだけOCR補完
     const needsOcr=pages.filter(function(p){return !p._hasText;});
     if(needsOcr.length>0&&needsOcr.length<n*0.6){
       setPdfMo('混在PDF — 画像'+needsOcr.length+'PをOCR補完',0.7);
-      const ocrR=await ocrSelectPages(u8,needsOcr.map(function(p){return p.p;}),pages);
+      const ocrR=await ocrSelectPages(new Uint8Array(buf),needsOcr.map(function(p){return p.p;}),pages);
       hidePdfMo();
       return pages.map(function(p){return {p:p.p,t:p._hasText?p.t:(ocrR[p.p]||'')};});
     }
@@ -784,7 +790,8 @@ async function processPdf(file){
     // PDF.js全体が失敗した場合もOCRを試みる
     try{
       setPdfMo('PDF解析エラー — OCRを試みます',0.5);
-      const doc2=await pdfjsLib.getDocument({data:u8,stopAtErrors:false,...PDFJS_OPTS}).promise;
+      // ★ Bug Fix: フォールバックでも元のbufから新しいUint8Arrayを生成する
+      const doc2=await pdfjsLib.getDocument({data:new Uint8Array(buf),stopAtErrors:false,...PDFJS_OPTS}).promise;
       const n2=doc2.numPages;doc2.destroy();
       const ocrP=await ocrPdf(u8,n2,[]);
       hidePdfMo();
@@ -1402,33 +1409,8 @@ async function deleteBook(bid){
 
 /* =============================================
    SAVE TO GITHUB
+   ★ Bug Fix: 旧定義を削除。下部のwindow.saveAllToGitHubが有効版です。
 ============================================= */
-async function saveAllToGitHub(msg){
-  if(!GH.repo||!GH.token){
-    toast('⚠️ GitHubの設定が未完了です。💾ボタンから設定してください。');return false;
-  }
-  db.updated=new Date().toISOString();
-  setBar(0.2);
-  // 1. meta.json
-  const r=await GH.write(META_PATH,JSON.stringify(db,null,2),msg||'更新');
-  if(!r.ok){toast('❌ 保存失敗: '+r.err);hidebar();return false;}
-  setBar(0.5);
-  // 2. Covers
-  const covEntries=Object.entries(_covers);
-  for(let i=0;i<covEntries.length;i++){
-    const[bid,b64]=covEntries[i];if(b64)await GH.write(COVER_PATH(bid),b64,'カバー更新');
-    setBar(0.5+i/covEntries.length*0.25);
-  }
-  // 3. Indexes
-  const idxEntries=Object.entries(_indexes);
-  for(let i=0;i<idxEntries.length;i++){
-    const[bid,idx]=idxEntries[i];
-    if(idx&&idx.length)await GH.write(IDX_PATH(bid),JSON.stringify(idx),'インデックス更新');
-    setBar(0.75+i/idxEntries.length*0.25);
-  }
-  saveCache();setBar(1);setTimeout(hidebar,500);
-  return true;
-}
 async function saveLocalAndToGitHub(msg){
   saveCache();if(GH.repo&&GH.token)return saveAllToGitHub(msg);return true;
 }
