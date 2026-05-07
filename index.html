@@ -405,6 +405,17 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
       <button class="btn btn-p" onclick="saveSetup()" style="background:#1a3a6a">💾 設定を保存</button>
       <span id="setup-st" style="font-size:12px;color:var(--mid);margin-left:10px"></span>
     </div>
+    <div class="gh-box" style="margin-top:12px;border-color:#d4a373">
+      <div class="gh-box-title" style="color:#7c4d00">🤖 Claude API設定（画像PDF・OCR用）</div>
+      <div class="fg" style="margin-bottom:6px">
+        <label class="fl" style="font-size:12px">Anthropic APIキー（画像PDFのテキスト抽出に使用）</label>
+        <input class="fi" type="password" id="s-claude" placeholder="sk-ant-api03-xxxxxxxxxxxx" style="font-size:12px;padding:7px 10px">
+        <small style="font-size:11px;color:var(--muted)">このブラウザにのみ保存。本の登録時のOCR処理にのみ使用されます。</small>
+      </div>
+      <div id="claude-status" style="font-size:12px;color:var(--mid);margin-bottom:8px;min-height:18px"></div>
+      <button class="btn btn-p" onclick="saveSetup()" style="background:#7c4d00">💾 設定を保存</button>
+      <button class="btn" onclick="testClaudeKey()" style="margin-left:8px;font-size:12px">🔍 APIキーを確認</button>
+    </div>
     <div style="background:var(--acl);border:1px solid #b5d5cc;border-radius:var(--rs);padding:14px">
       <div style="font-size:13px;font-weight:600;color:var(--ac);margin-bottom:6px">🚀 GitHubに保存</div>
       <div style="font-size:12px;color:var(--mid);margin-bottom:10px;line-height:1.7">書籍データをGitHubに保存します。全端末に即時反映されます。本の追加・編集後は必ずこちらで保存してください。</div>
@@ -427,7 +438,7 @@ const DEFAULT_REPO='kyokenrika41/bookshelf_tokyo';
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 // ★ Bug Fix: cdnjsにはcmapファイルが含まれていないため、jsDelivrを使用する
 const PDFJS_OPTS={cMapUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',cMapPacked:true,standardFontDataUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'};
-const LS_REPO='bk3_repo',LS_TOKEN='bk3_token',LS_CACHE='bk3_cache',LS_CACHE_TS='bk3_cache_ts';
+const LS_REPO='bk3_repo',LS_TOKEN='bk3_token',LS_CACHE='bk3_cache',LS_CACHE_TS='bk3_cache_ts',LS_CLAUDE='bk3_claude';
 const META_PATH='data/meta.json';
 const COVER_PATH=id=>`data/covers/${id}.txt`;
 const IDX_PATH=id=>`data/idx/${id}.json`;
@@ -793,7 +804,7 @@ async function processPdf(file){
       // ★ Bug Fix: フォールバックでも元のbufから新しいUint8Arrayを生成する
       const doc2=await pdfjsLib.getDocument({data:new Uint8Array(buf),stopAtErrors:false,...PDFJS_OPTS}).promise;
       const n2=doc2.numPages;doc2.destroy();
-      const ocrP=await ocrPdf(u8,n2,[]);
+      const ocrP=await ocrPdf(new Uint8Array(buf),n2,[]);
       hidePdfMo();
       if(ocrP&&ocrP.length>0)return ocrP;
     }catch(e2){console.error('OCRフォールバック失敗:',e2);}
@@ -801,16 +812,58 @@ async function processPdf(file){
   }
 }
 
-// ★ Tesseract workerを生成（v5対応）
+// ★ Claude Vision APIによる1ページOCR
+async function ocrPageWithClaude(canvas,apiKey){
+  return new Promise((resolve)=>{
+    canvas.toBlob(async(blob)=>{
+      try{
+        const arrayBuf=await blob.arrayBuffer();
+        const b64=btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+        const resp=await fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'x-api-key':apiKey,
+            'anthropic-version':'2023-06-01'
+          },
+          body:JSON.stringify({
+            model:'claude-haiku-4-5-20251001',
+            max_tokens:2000,
+            messages:[{
+              role:'user',
+              content:[
+                {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+                {type:'text',text:'この画像に含まれるテキストをすべて抽出してください。改行・段落構成はそのまま維持してください。図・グラフのキャプション・数式・表の内容も含めてください。テキスト以外のコメントや説明は不要です。'}
+              ]
+            }]
+          })
+        });
+        if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||resp.status);}
+        const data=await resp.json();
+        resolve((data.content?.[0]?.text||'').replace(/\s+/g,' ').trim());
+      }catch(e){
+        console.warn('Claude OCRエラー:',e);
+        resolve('');
+      }
+    },'image/jpeg',0.88);
+  });
+}
+
+// ★ Tesseract workerを生成（v5対応、明示的なCDNパス指定）
 async function makeTesseractWorker(){
-  // Tesseract.js v5 API
+  const opts={
+    workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    langPath:'https://tessdata.projectnaptha.com/4.0.0',
+    corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
+    cacheMethod:'write'
+  };
   try{
-    var w=await Tesseract.createWorker('jpn');
+    var w=await Tesseract.createWorker('jpn',1,opts);
     return w;
   }catch(e){
-    console.warn('jpn失敗:',e.message||e);
+    console.warn('Tesseract jpn失敗:',e.message||e);
     try{
-      var w2=await Tesseract.createWorker('eng');
+      var w2=await Tesseract.createWorker('eng',1,opts);
       return w2;
     }catch(e2){
       console.error('Tesseract初期化失敗:',e2.message||e2);
@@ -828,8 +881,39 @@ async function renderPageToCanvas(pg,scale=1.5){
   return cv;
 }
 
-// ★ 全ページOCR（画像PDF用）
+// ★ 全ページOCR（画像PDF用）— Claude優先、Tesseractフォールバック
 async function ocrPdf(u8,pageCount,fallbackPages){
+  const claudeKey=localStorage.getItem(LS_CLAUDE);
+
+  // ── Claude Vision APIルート ──
+  if(claudeKey){
+    const pages=[];
+    let doc=null;
+    try{
+      doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
+      for(let i=1;i<=pageCount;i++){
+        try{
+          setPdfMo(`🤖 Claude OCR ${i}/${pageCount}ページ`,0.65+i/pageCount*0.35);
+          const pg=await doc.getPage(i);
+          const cv=await renderPageToCanvas(pg,1.8);
+          const txt=await ocrPageWithClaude(cv,claudeKey);
+          pages.push({p:i,t:txt});
+        }catch(e){
+          const fb=(fallbackPages||[]).find(x=>x.p===i);
+          pages.push({p:i,t:fb?fb.t:''});
+        }
+      }
+    }finally{
+      if(doc)try{doc.destroy();}catch{}
+    }
+    const hasContent=pages.some(p=>p.t&&p.t.length>5);
+    if(!hasContent&&fallbackPages&&fallbackPages.length){
+      return (fallbackPages||[]).map(({p,t})=>({p,t}));
+    }
+    return pages;
+  }
+
+  // ── Tesseract.jsフォールバック ──
   const worker=await makeTesseractWorker();
   if(!worker){
     setPdfMo('OCR利用不可 — テキスト抽出結果を使用',1);
@@ -863,12 +947,34 @@ async function ocrPdf(u8,pageCount,fallbackPages){
   return pages;
 }
 
-// ★ 選択ページのみOCR（混在PDF用）
+// ★ 選択ページのみOCR（混在PDF用）— Claude優先、Tesseractフォールバック
 async function ocrSelectPages(u8,pageNums,allPages){
-  const worker=await makeTesseractWorker();
+  const claudeKey=localStorage.getItem(LS_CLAUDE);
   const result={};
-  if(!worker)return result;
   let doc=null;
+
+  // ── Claude Vision APIルート ──
+  if(claudeKey){
+    try{
+      doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
+      for(let idx=0;idx<pageNums.length;idx++){
+        const i=pageNums[idx];
+        try{
+          setPdfMo(`🤖 Claude OCR補完 ${idx+1}/${pageNums.length}ページ`,0.7+idx/pageNums.length*0.3);
+          const pg=await doc.getPage(i);
+          const cv=await renderPageToCanvas(pg,1.8);
+          result[i]=await ocrPageWithClaude(cv,claudeKey);
+        }catch(e){result[i]='';}
+      }
+    }finally{
+      if(doc)try{doc.destroy();}catch{}
+    }
+    return result;
+  }
+
+  // ── Tesseract.jsフォールバック ──
+  const worker=await makeTesseractWorker();
+  if(!worker)return result;
   try{
     doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
     for(let idx=0;idx<pageNums.length;idx++){
@@ -1421,7 +1527,10 @@ async function saveLocalAndToGitHub(msg){
 function openSetup(){
   document.getElementById('s-repo').value=GH.repo;
   document.getElementById('s-token').value=GH.token;
+  document.getElementById('s-claude').value=localStorage.getItem(LS_CLAUDE)||'';
   document.getElementById('setup-st').textContent='';
+  document.getElementById('claude-status').textContent=
+    localStorage.getItem(LS_CLAUDE)?'✅ APIキー設定済み（画像PDFのOCRにClaudeを使用します）':'未設定（画像PDFはTesseract OCRを使用）';
   const el=document.getElementById('gh-st');el.textContent='';
   const idxCnt=db.books.filter(b=>b.hasIdx).length;
   document.getElementById('setup-info').innerHTML=
@@ -1432,10 +1541,30 @@ function openSetup(){
 function saveSetup(){
   const repo=document.getElementById('s-repo').value.trim();
   const token=document.getElementById('s-token').value.trim();
+  const claude=document.getElementById('s-claude').value.trim();
   localStorage.setItem(LS_REPO,repo);localStorage.setItem(LS_TOKEN,token);
+  if(claude)localStorage.setItem(LS_CLAUDE,claude);
+  else localStorage.removeItem(LS_CLAUDE);
   document.getElementById('setup-st').textContent='✅ 保存しました';
+  document.getElementById('claude-status').textContent=
+    claude?'✅ APIキー設定済み（画像PDFのOCRにClaudeを使用します）':'未設定（画像PDFはTesseract OCRを使用）';
   toast('✅ 設定を保存しました。ページをリロードすると最新データを取得します。');
-  renderAll(); // edit button visibility update
+  renderAll();
+}
+async function testClaudeKey(){
+  const key=document.getElementById('s-claude').value.trim();
+  const st=document.getElementById('claude-status');
+  if(!key){st.textContent='❌ APIキーを入力してください';st.style.color='#c0392b';return;}
+  st.textContent='🔄 確認中…';st.style.color='var(--mid)';
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'Hi'}]})
+    });
+    if(r.ok){st.textContent='✅ APIキーは有効です';st.style.color='#1a6a3a';}
+    else{const d=await r.json();st.textContent='❌ '+(d.error?.message||'無効なキー');st.style.color='#c0392b';}
+  }catch(e){st.textContent='❌ 接続エラー: '+e.message;st.style.color='#c0392b';}
 }
 async function saveAllFromSetup(){
   const btn=document.querySelector('#m-setup .btn-p:nth-child(1)');
