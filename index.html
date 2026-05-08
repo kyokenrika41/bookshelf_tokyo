@@ -849,27 +849,53 @@ async function ocrPageWithClaude(canvas,apiKey){
   });
 }
 
-// ★ Tesseract workerを生成（v5対応、明示的なCDNパス指定）
-async function makeTesseractWorker(){
-  const opts={
-    workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-    langPath:'https://tessdata.projectnaptha.com/4.0.0',
-    corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
-    cacheMethod:'write'
-  };
+// ── Tesseract.js: 信頼性の高い設定 ──────────────────────────────────
+// jsDelivr経由でGitHub(naptha/tessdata)から言語データを配信
+// tessdata.projectnaptha.comより安定しており、CORSも正常に動作する
+const TSRCT_LANG_PATH='https://cdn.jsdelivr.net/gh/naptha/tessdata@4.0.0';
+const TSRCT_WORKER  ='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js';
+const TSRCT_CORE_SIMD='https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js';
+const TSRCT_CORE_SAFE='https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-lstm.wasm.js';
+
+// ブラウザのWASM SIMD対応を確認（非対応ブラウザでは安全版coreを使用）
+async function detectWasmSimd(){
   try{
-    var w=await Tesseract.createWorker('jpn',1,opts);
-    return w;
-  }catch(e){
-    console.warn('Tesseract jpn失敗:',e.message||e);
+    // SIMD命令(i8x16.splat)を含む最小WASMバイナリで検証
+    return await WebAssembly.validate(new Uint8Array([
+      0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11
+    ]));
+  }catch{return false;}
+}
+
+// Tesseract workerを生成
+// ・試行順: jpn → jpn_vert → eng
+// ・初回はjsDelivrから言語データをDL（jpn≈12MB）、2回目以降はIndexedDBキャッシュで即時
+// ・90秒タイムアウトで無限待機を防止
+async function makeTesseractWorker(){
+  const simd=await detectWasmSimd();
+  const opts={
+    workerPath:TSRCT_WORKER,
+    langPath:TSRCT_LANG_PATH,
+    corePath:simd?TSRCT_CORE_SIMD:TSRCT_CORE_SAFE,
+    cacheMethod:'write'   // IndexedDBに保存 → 2回目以降は高速
+  };
+  const TIMEOUT_MS=90000;
+  const tryLangs=['jpn','jpn_vert','eng'];
+  for(const lang of tryLangs){
     try{
-      var w2=await Tesseract.createWorker('eng',1,opts);
-      return w2;
-    }catch(e2){
-      console.error('Tesseract初期化失敗:',e2.message||e2);
-      return null;
+      setPdfMo(`OCRエンジン準備中（${lang}）… 初回は言語データ取得に数十秒かかります`,0.62);
+      const w=await Promise.race([
+        Tesseract.createWorker(lang,1,opts),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error(`タイムアウト(${TIMEOUT_MS/1000}s)`)),TIMEOUT_MS))
+      ]);
+      console.log(`Tesseract worker (${lang}) 起動完了 / SIMD:${simd}`);
+      return w;
+    }catch(e){
+      console.warn(`Tesseract ${lang} 失敗:`,e.message||e);
     }
   }
+  console.error('Tesseract 全言語で初期化失敗');
+  return null;
 }
 
 // ★ ページをCanvasに描画してOCR
@@ -881,57 +907,50 @@ async function renderPageToCanvas(pg,scale=1.5){
   return cv;
 }
 
-// ★ 全ページOCR（画像PDF用）— Claude優先、Tesseractフォールバック
+// ★ 全ページOCR（画像PDF用）— Tesseract主体、Claude APIキーがあれば優先
 async function ocrPdf(u8,pageCount,fallbackPages){
   const claudeKey=localStorage.getItem(LS_CLAUDE);
 
-  // ── Claude Vision APIルート ──
+  // ── Claude Vision APIルート（APIキー設定時のみ）──
   if(claudeKey){
-    const pages=[];
-    let doc=null;
+    const pages=[];let doc=null;
     try{
       doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
       for(let i=1;i<=pageCount;i++){
         try{
           setPdfMo(`🤖 Claude OCR ${i}/${pageCount}ページ`,0.65+i/pageCount*0.35);
-          const pg=await doc.getPage(i);
-          const cv=await renderPageToCanvas(pg,1.8);
+          const pg=await doc.getPage(i);const cv=await renderPageToCanvas(pg,1.8);
           const txt=await ocrPageWithClaude(cv,claudeKey);
           pages.push({p:i,t:txt});
-        }catch(e){
-          const fb=(fallbackPages||[]).find(x=>x.p===i);
-          pages.push({p:i,t:fb?fb.t:''});
-        }
+        }catch(e){const fb=(fallbackPages||[]).find(x=>x.p===i);pages.push({p:i,t:fb?fb.t:''});}
       }
-    }finally{
-      if(doc)try{doc.destroy();}catch{}
-    }
-    const hasContent=pages.some(p=>p.t&&p.t.length>5);
-    if(!hasContent&&fallbackPages&&fallbackPages.length){
-      return (fallbackPages||[]).map(({p,t})=>({p,t}));
-    }
-    return pages;
+    }finally{if(doc)try{doc.destroy();}catch{}}
+    if(pages.some(p=>p.t&&p.t.length>5))return pages;
+    // Claudeが空結果 → Tesseractに続行
   }
 
-  // ── Tesseract.jsフォールバック ──
+  // ── Tesseract.jsルート ──
   const worker=await makeTesseractWorker();
   if(!worker){
-    setPdfMo('OCR利用不可 — テキスト抽出結果を使用',1);
+    // OCRエンジン初期化失敗 → フォールバック（空テキスト）を返す
+    setPdfMo('⚠️ OCRエンジンを起動できませんでした',1);
+    console.warn('OCR失敗: Tesseractワーカー起動不可');
     return (fallbackPages||[]).map(({p,t})=>({p,t}));
   }
-  const pages=[];
-  let doc=null;
+
+  const pages=[];let doc=null;
   try{
     doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
     for(let i=1;i<=pageCount;i++){
       try{
-        setPdfMo(`OCR ${i}/${pageCount}ページ`,0.7+i/pageCount*0.3);
+        setPdfMo(`OCR ${i}/${pageCount}ページ処理中… (${Math.round(i/pageCount*100)}%)`,0.65+i/pageCount*0.35);
         const pg=await doc.getPage(i);
-        const cv=await renderPageToCanvas(pg,1.5);
+        const cv=await renderPageToCanvas(pg,2.0); // 解像度2.0倍でOCR精度向上
         const res=await worker.recognize(cv);
         const txt=(res.data.text||'').replace(/\s+/g,' ').trim();
         pages.push({p:i,t:txt});
       }catch(e){
+        console.warn(`OCR ${i}ページエラー:`,e);
         const fb=(fallbackPages||[]).find(x=>x.p===i);
         pages.push({p:i,t:fb?fb.t:''});
       }
@@ -947,13 +966,11 @@ async function ocrPdf(u8,pageCount,fallbackPages){
   return pages;
 }
 
-// ★ 選択ページのみOCR（混在PDF用）— Claude優先、Tesseractフォールバック
+// ★ 選択ページのみOCR（混在PDF用）— Tesseract主体、Claude APIキーがあれば優先
 async function ocrSelectPages(u8,pageNums,allPages){
   const claudeKey=localStorage.getItem(LS_CLAUDE);
-  const result={};
-  let doc=null;
+  const result={};let doc=null;
 
-  // ── Claude Vision APIルート ──
   if(claudeKey){
     try{
       doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
@@ -961,18 +978,14 @@ async function ocrSelectPages(u8,pageNums,allPages){
         const i=pageNums[idx];
         try{
           setPdfMo(`🤖 Claude OCR補完 ${idx+1}/${pageNums.length}ページ`,0.7+idx/pageNums.length*0.3);
-          const pg=await doc.getPage(i);
-          const cv=await renderPageToCanvas(pg,1.8);
+          const pg=await doc.getPage(i);const cv=await renderPageToCanvas(pg,1.8);
           result[i]=await ocrPageWithClaude(cv,claudeKey);
         }catch(e){result[i]='';}
       }
-    }finally{
-      if(doc)try{doc.destroy();}catch{}
-    }
-    return result;
+    }finally{if(doc)try{doc.destroy();}catch{}}
+    if(Object.values(result).some(t=>t&&t.length>5))return result;
   }
 
-  // ── Tesseract.jsフォールバック ──
   const worker=await makeTesseractWorker();
   if(!worker)return result;
   try{
@@ -980,9 +993,9 @@ async function ocrSelectPages(u8,pageNums,allPages){
     for(let idx=0;idx<pageNums.length;idx++){
       const i=pageNums[idx];
       try{
-        setPdfMo(`画像ページOCR補完 ${idx+1}/${pageNums.length}`,0.7+idx/pageNums.length*0.3);
+        setPdfMo(`OCR補完 ${idx+1}/${pageNums.length}ページ (${Math.round((idx+1)/pageNums.length*100)}%)`,0.7+idx/pageNums.length*0.3);
         const pg=await doc.getPage(i);
-        const cv=await renderPageToCanvas(pg,1.5);
+        const cv=await renderPageToCanvas(pg,2.0);
         const res=await worker.recognize(cv);
         result[i]=(res.data.text||'').replace(/\s+/g,' ').trim();
       }catch(e){result[i]='';}
@@ -1394,7 +1407,11 @@ async function onPdfFile(inp){
         _tmpIdx=_tmpPdfFiles.reduce(function(acc,x){return acc.concat(x.pages);},[]);
         renderPdfList();
         st.style.color='#c0392b';
-        st.textContent='⚠️ '+pageCount+'ページ登録済（テキスト抽出失敗・画像PDF）— 本棚への登録は可能です。検索にはOCR処理が必要です。';
+        st.innerHTML='⚠️ '+pageCount+'ページ登録済（テキスト抽出失敗・画像PDF）'
+          +'<br><small style="font-size:11px;line-height:1.5;display:block;margin-top:4px">'
+          +'🔄 本棚への登録は完了しています。検索するには再度PDFをアップロードしてOCR処理を行ってください。<br>'
+          +'💡 OCRが失敗する場合: ブラウザをリロードして再アップロードすると成功することがあります（言語データのキャッシュ後）。'
+          +'</small>';
       }else{
         st.style.color='#c0392b';
         st.textContent='❌ 「'+f.name+'」を読み込めませんでした。PDFが壊れているか、対応していない形式の可能性があります。';
