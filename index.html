@@ -182,6 +182,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
   <div id="logo" onclick="goHome()">📚 <span>本棚</span></div>
   <div id="stabs"></div>
   <div id="hacts">
+        <button id="ocr-badge" class="ibt" title="OCRエンジン準備中…" style="font-size:13px;color:#c07000;cursor:default">⏳</button>
     <div id="sw"><span class="si">🔍</span><input id="srch" type="text" placeholder="本を検索…" oninput="filterBooks(this.value)"></div>
     <button class="ibt" onclick="openSubjMgr()" title="教科管理">⚙️</button>
     <button class="ibt" onclick="openSetup()" title="設定・GitHub">💾</button>
@@ -740,9 +741,14 @@ function normalizeStr(s){
 async function processPdf(file){
   const buf=await file.arrayBuffer();
   const u8=new Uint8Array(buf);
+  // ★★ 根本バグ修正: PDF.jsはgetDocument()でArrayBufferをWorkerに転送(detach)する。
+  // 転送後はbufもu8も0バイトになるため、事前に独立したコピー(srcBytes)を作成する。
+  // 以降のOCR・フォールバック処理はすべてsrcBytes.slice()から新しいコピーを生成して使用する。
+  const srcBytes=u8.slice(); // ← getDocument呼び出し前の独立コピー（bufが無効化されても有効）
   showPdfMo('テキスト抽出中...',0);
   try{
     const doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
+    // ↑ この呼び出し後、buf・u8は転送済みで0バイトになる。以降はsrcBytesを使う。
     const n=doc.numPages;
     const pages=[];
     let emptyCount=0,totalChars=0;
@@ -753,7 +759,6 @@ async function processPdf(file){
         const pg=await doc.getPage(i);
         const tc=await pg.getTextContent();
         const raw=tc.items.map(function(x){return x.str;}).join('');
-        // 空白類を除いた有効文字数
         let cleaned='';
         for(let ci=0;ci<raw.length;ci++){
           const cc=raw.charCodeAt(ci);
@@ -776,21 +781,20 @@ async function processPdf(file){
     // 全ページ空 → 完全な画像PDF
     if(emptyCount===n){
       setPdfMo('全ページ画像PDF — OCR開始',0.7);
-      // ★ Bug Fix: PDF.jsがバッファを内部で消費した可能性があるため、元のbufから新しいUint8Arrayを生成する
-      const ocrP=await ocrPdf(new Uint8Array(buf),n,pages);
+      const ocrP=await ocrPdf(srcBytes.slice(),n,pages); // ← srcBytesから新鮮なコピー
       hidePdfMo();return ocrP;
     }
     // 60%超が空 → 画像PDF主体
     if(emptyCount/n>0.6){
       setPdfMo('画像PDF('+(Math.round(emptyCount/n*100))+'%) — OCR開始',0.7);
-      const ocrP=await ocrPdf(new Uint8Array(buf),n,pages);
+      const ocrP=await ocrPdf(srcBytes.slice(),n,pages); // ← srcBytesから新鮮なコピー
       hidePdfMo();return ocrP;
     }
     // 一部のみ画像 → 画像ページだけOCR補完
     const needsOcr=pages.filter(function(p){return !p._hasText;});
     if(needsOcr.length>0&&needsOcr.length<n*0.6){
       setPdfMo('混在PDF — 画像'+needsOcr.length+'PをOCR補完',0.7);
-      const ocrR=await ocrSelectPages(new Uint8Array(buf),needsOcr.map(function(p){return p.p;}),pages);
+      const ocrR=await ocrSelectPages(srcBytes.slice(),needsOcr.map(function(p){return p.p;}),pages); // ← srcBytesから
       hidePdfMo();
       return pages.map(function(p){return {p:p.p,t:p._hasText?p.t:(ocrR[p.p]||'')};});
     }
@@ -798,13 +802,12 @@ async function processPdf(file){
     return pages.map(function(p){return {p:p.p,t:p.t};});
   }catch(e){
     console.error('processPdf error:',e);
-    // PDF.js全体が失敗した場合もOCRを試みる
     try{
       setPdfMo('PDF解析エラー — OCRを試みます',0.5);
-      // ★ Bug Fix: フォールバックでも元のbufから新しいUint8Arrayを生成する
-      const doc2=await pdfjsLib.getDocument({data:new Uint8Array(buf),stopAtErrors:false,...PDFJS_OPTS}).promise;
+      // srcBytesはbufと独立しているので転送後も有効
+      const doc2=await pdfjsLib.getDocument({data:srcBytes.slice(),stopAtErrors:false,...PDFJS_OPTS}).promise;
       const n2=doc2.numPages;doc2.destroy();
-      const ocrP=await ocrPdf(new Uint8Array(buf),n2,[]);
+      const ocrP=await ocrPdf(srcBytes.slice(),n2,[]);
       hidePdfMo();
       if(ocrP&&ocrP.length>0)return ocrP;
     }catch(e2){console.error('OCRフォールバック失敗:',e2);}
@@ -849,7 +852,61 @@ async function ocrPageWithClaude(canvas,apiKey){
   });
 }
 
-// ── Tesseract.js: 信頼性の高い設定 ──────────────────────────────────
+// ─ グローバルTesseractワーカー（共有・再利用）────────────────────────
+// バックグラウンドで言語データをDL・IndexedDBキャッシュ
+// → PDF登録時は即座にOCR開始できる
+let _tsWorker=null;   // 生成済みワーカー（nullなら未初期化）
+let _tsReady =false;  // 初期化完了フラグ
+let _tsLoading=false; // 初期化中フラグ
+
+// アプリ起動後にバックグラウンドで言語データDL・ワーカー準備
+async function preloadTesseract(){
+  if(_tsWorker||_tsLoading)return;
+  _tsLoading=true;
+  _setOcrBadge('loading');
+  try{
+    const simd=await detectWasmSimd();
+    const opts={workerPath:TSRCT_WORKER,langPath:TSRCT_LANG_PATH,
+      corePath:simd?TSRCT_CORE_SIMD:TSRCT_CORE_SAFE,cacheMethod:'write'};
+    _tsWorker=await Promise.race([
+      Tesseract.createWorker('jpn',1,opts),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('preload-timeout')),120000))
+    ]);
+    _tsReady=true;
+    _setOcrBadge('ready');
+    console.log('✅ Tesseract バックグラウンド初期化完了 (jpn, SIMD:'+simd+')');
+  }catch(e){
+    _tsWorker=null;_tsReady=false;
+    _setOcrBadge('error');
+    console.warn('⚠️ Tesseract バックグラウンド初期化失敗:',e.message||e);
+  }finally{_tsLoading=false;}
+}
+
+// 共有ワーカーを取得。バックグラウンド準備中なら完了まで最大120秒待機
+async function getOrMakeTesseractWorker(onWait){
+  if(_tsReady&&_tsWorker)return _tsWorker;
+  if(_tsLoading){
+    // バックグラウンド初期化待機
+    for(let i=0;i<120;i++){
+      await new Promise(r=>setTimeout(r,1000));
+      if(onWait)onWait(`OCRエンジン準備完了待ち… (${i+1}秒)`);
+      if(_tsReady&&_tsWorker)return _tsWorker;
+      if(!_tsLoading)break; // 失敗で終了
+    }
+  }
+  // バックグラウンドが失敗/未開始 → 直接フォールバック初期化
+  return makeTesseractWorker();
+}
+
+// ヘッダーのOCRバッジを更新
+function _setOcrBadge(state){
+  const el=document.getElementById('ocr-badge');if(!el)return;
+  const map={loading:['⏳','#c07000','言語データDL中… 完了後OCR利用可能'],
+             ready  :['🔍','#1a6a3a','OCRエンジン準備完了（画像PDFの検索が可能）'],
+             error  :['⚠','#c0392b','OCRエンジン利用不可（ページをリロードで再試行）']};
+  const[ic,col,title]=map[state]||map.error;
+  el.textContent=ic;el.title=title;el.style.color=col;
+}
 // jsDelivr経由でGitHub(naptha/tessdata)から言語データを配信
 // tessdata.projectnaptha.comより安定しており、CORSも正常に動作する
 const TSRCT_LANG_PATH='https://cdn.jsdelivr.net/gh/naptha/tessdata@4.0.0';
@@ -930,9 +987,8 @@ async function ocrPdf(u8,pageCount,fallbackPages){
   }
 
   // ── Tesseract.jsルート ──
-  const worker=await makeTesseractWorker();
+  const worker=await getOrMakeTesseractWorker(txt=>setPdfMo(txt,0.62));
   if(!worker){
-    // OCRエンジン初期化失敗 → フォールバック（空テキスト）を返す
     setPdfMo('⚠️ OCRエンジンを起動できませんでした',1);
     console.warn('OCR失敗: Tesseractワーカー起動不可');
     return (fallbackPages||[]).map(({p,t})=>({p,t}));
@@ -945,7 +1001,7 @@ async function ocrPdf(u8,pageCount,fallbackPages){
       try{
         setPdfMo(`OCR ${i}/${pageCount}ページ処理中… (${Math.round(i/pageCount*100)}%)`,0.65+i/pageCount*0.35);
         const pg=await doc.getPage(i);
-        const cv=await renderPageToCanvas(pg,2.0); // 解像度2.0倍でOCR精度向上
+        const cv=await renderPageToCanvas(pg,2.0);
         const res=await worker.recognize(cv);
         const txt=(res.data.text||'').replace(/\s+/g,' ').trim();
         pages.push({p:i,t:txt});
@@ -957,7 +1013,8 @@ async function ocrPdf(u8,pageCount,fallbackPages){
     }
   }finally{
     if(doc)try{doc.destroy();}catch{}
-    try{await worker.terminate();}catch{}
+    // 共有ワーカーは terminate しない（再利用のため）
+    if(worker!==_tsWorker)try{await worker.terminate();}catch{}
   }
   const hasContent=pages.some(p=>p.t&&p.t.length>5);
   if(!hasContent&&fallbackPages&&fallbackPages.length){
@@ -986,7 +1043,7 @@ async function ocrSelectPages(u8,pageNums,allPages){
     if(Object.values(result).some(t=>t&&t.length>5))return result;
   }
 
-  const worker=await makeTesseractWorker();
+  const worker=await getOrMakeTesseractWorker(txt=>setPdfMo(txt,0.7));
   if(!worker)return result;
   try{
     doc=await pdfjsLib.getDocument({data:u8,...PDFJS_OPTS}).promise;
@@ -1002,7 +1059,7 @@ async function ocrSelectPages(u8,pageNums,allPages){
     }
   }finally{
     if(doc)try{doc.destroy();}catch{}
-    try{await worker.terminate();}catch{}
+    if(worker!==_tsWorker)try{await worker.terminate();}catch{}
   }
   return result;
 }
@@ -1724,6 +1781,9 @@ window.saveAllToGitHub = async function(msg) {
    START
 ============================================= */
 init();
+// アプリ起動3秒後にTesseract言語データをバックグラウンドDL
+// → 初回は約12MB、2回目以降はIndexedDBキャッシュで即時完了
+setTimeout(preloadTesseract, 3000);
 </script>
 </body>
 </html>
