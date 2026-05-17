@@ -1,6 +1,6 @@
 {
   "v": 3,
-  "updated": "2026-05-17T05:32:06.966Z",
+  "updated": "2026-05-17T05:40:35.784Z",
   "subjects": [
     {
       "id": "sj_1776844796256",
@@ -168,6 +168,207 @@
       ],
       "hasIdx": true,
       "pageCount": 286,
+      "comment": ""
+    },
+    {
+      "id": "bk_1778996435784_tzn",
+      "sid": "sj_1776844796256",
+      "title": "高校地学基礎",
+      "vol": "",
+      "author": "古賀真理子",
+      "date": "2026-03-01",
+      "dtype": "revision",
+      "tocUrl": "",
+      "hasCover": true,
+      "toc": [
+        {
+          "title": "第1章 地球のすがた",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 地球の概観 -",
+          "page": 1,
+          "level": 1
+        },
+        {
+          "title": "2 地球の内部構造 -",
+          "page": 5,
+          "level": 1
+        },
+        {
+          "title": "3 プレートの境界 -",
+          "page": 9,
+          "level": 1
+        },
+        {
+          "title": "4 プレートの運動 -",
+          "page": 13,
+          "level": 1
+        },
+        {
+          "title": "5 地震の発生 -",
+          "page": 17,
+          "level": 1
+        },
+        {
+          "title": "6 地震波の伝わり方 -",
+          "page": 23,
+          "level": 1
+        },
+        {
+          "title": "7 日本付近で発生する地震 -",
+          "page": 27,
+          "level": 1
+        },
+        {
+          "title": "8 火山活動 -",
+          "page": 31,
+          "level": 1
+        },
+        {
+          "title": "9 火成岩 -",
+          "page": 37,
+          "level": 1
+        },
+        {
+          "title": "10 堆積岩と変成岩 -",
+          "page": 41,
+          "level": 1
+        },
+        {
+          "title": "第2章 大気",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 大気圏 -",
+          "page": 47,
+          "level": 1
+        },
+        {
+          "title": "2 対流圏における水の変化 -",
+          "page": 51,
+          "level": 1
+        },
+        {
+          "title": "3 地球の熱収支 -",
+          "page": 55,
+          "level": 1
+        },
+        {
+          "title": "4 大気の大循環 -",
+          "page": 59,
+          "level": 1
+        },
+        {
+          "title": "5 日本の天気(1) -",
+          "page": 65,
+          "level": 1
+        },
+        {
+          "title": "6 日本の天気(2) -",
+          "page": 71,
+          "level": 1
+        },
+        {
+          "title": "第3章 海洋",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 海水とその運動 -",
+          "page": 77,
+          "level": 1
+        },
+        {
+          "title": "2 海洋と大気の相互作用 -",
+          "page": 81,
+          "level": 1
+        },
+        {
+          "title": "第4章 地球の環境",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 温暖化・オゾン層の破壊 -",
+          "page": 87,
+          "level": 1
+        },
+        {
+          "title": "2 さまざまな災害 -",
+          "page": 91,
+          "level": 1
+        },
+        {
+          "title": "第5章 宇宙と地球",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 太陽系 -",
+          "page": 97,
+          "level": 1
+        },
+        {
+          "title": "2 太陽 -",
+          "page": 103,
+          "level": 1
+        },
+        {
+          "title": "3 太陽系の誕生と宇宙のはじまり -",
+          "page": 107,
+          "level": 1
+        },
+        {
+          "title": "第6章 地球の歴史",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 風化と河川のはたらき -",
+          "page": 113,
+          "level": 1
+        },
+        {
+          "title": "2 地層の形成 -",
+          "page": 117,
+          "level": 1
+        },
+        {
+          "title": "3 化石と地質年代 -",
+          "page": 123,
+          "level": 1
+        },
+        {
+          "title": "4 古生物の変遷(1) -",
+          "page": 127,
+          "level": 1
+        },
+        {
+          "title": "5 古生物の変遷 (2) -",
+          "page": 131,
+          "level": 1
+        },
+        {
+          "title": "6 古生物の変遷(3) -",
+          "page": 135,
+          "level": 1
+        },
+        {
+          "title": "解答",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "解答 -",
+          "page": 140,
+          "level": 1
+        }
+      ],
+      "hasIdx": true,
+      "pageCount": 144,
       "comment": ""
     }
   ]
