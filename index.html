@@ -402,8 +402,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
       </div>
       <div class="fg" style="margin-bottom:10px">
         <label class="fl" style="font-size:12px">Personal Access Token（Contents read/write権限）</label>
-        <input class="fi" type="password" id="s-token" placeholder="ghp_xxxxxxxxxxxx" style="font-size:12px;padding:7px 10px">
-        <small style="font-size:11px;color:var(--muted)">このブラウザにのみ保存されます。共有されません。</small>
+        <input class="fi" type="password" id="s-token" placeholder="ghp_xxxxxxxxxxxx" autocomplete="new-password" style="font-size:12px;padding:7px 10px">
+        <small style="font-size:11px;color:var(--muted)">このブラウザにのみ保存されます。共有されません。<br>
+          <span id="token-status" style="color:#1a6a3a"></span>
+        </small>
       </div>
       <button class="btn btn-p" onclick="saveSetup()" style="background:#1a3a6a">💾 設定を保存</button>
       <span id="setup-st" style="font-size:12px;color:var(--mid);margin-left:10px"></span>
@@ -1743,7 +1745,9 @@ async function saveLocalAndToGitHub(msg){
 ============================================= */
 function openSetup(){
   document.getElementById('s-repo').value=GH.repo;
-  document.getElementById('s-token').value=GH.token;
+  document.getElementById('s-token').value=''; // セキュリティのため空表示（保存済みは下記ステータスで確認）
+  document.getElementById('token-status').textContent=GH.token?'✅ トークン設定済み（変更する場合のみ入力）':'未設定';
+  document.getElementById('token-status').style.color=GH.token?'#1a6a3a':'#c0392b';
   document.getElementById('s-claude').value=localStorage.getItem(LS_CLAUDE)||'';
   document.getElementById('s-drive').value=localStorage.getItem(LS_DRIVE)||'';
   document.getElementById('setup-st').textContent='';
@@ -1761,7 +1765,9 @@ function saveSetup(){
   const token=document.getElementById('s-token').value.trim();
   const claude=document.getElementById('s-claude').value.trim();
   const drive=document.getElementById('s-drive').value.trim();
-  localStorage.setItem(LS_REPO,repo);localStorage.setItem(LS_TOKEN,token);
+  localStorage.setItem(LS_REPO,repo);
+  // トークンは空欄のまま保存しても上書きしない（パスワード欄がブラウザの都合で空表示になる場合があるため）
+  if(token)localStorage.setItem(LS_TOKEN,token);
   if(claude)localStorage.setItem(LS_CLAUDE,claude);
   else localStorage.removeItem(LS_CLAUDE);
   if(drive)localStorage.setItem(LS_DRIVE,drive);
