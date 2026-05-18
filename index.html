@@ -718,7 +718,8 @@ function renderBPPdf(b){
       <iframe src="${embedUrl}" style="flex:1;width:100%;border:none" allow="fullscreen" loading="lazy" title="本文PDFフォルダ"></iframe>
     </div>`;
 }
-}
+
+function renderBPToc(b){
   const c=document.getElementById('bpt-toc');c.innerHTML='';
   if(b.tocUrl){
     const a=document.createElement('a');a.href=b.tocUrl;a.target='_blank';
