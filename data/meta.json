@@ -1,6 +1,6 @@
 {
   "v": 3,
-  "updated": "2026-05-17T05:40:35.784Z",
+  "updated": "2026-05-18T07:56:25.479Z",
   "subjects": [
     {
       "id": "sj_1776844796256",
@@ -16,159 +16,178 @@
       "vol": "上巻",
       "author": "村杉拓夢",
       "date": "2026-03-01",
-      "dtype": "release",
+      "dtype": "revision",
       "tocUrl": "",
       "hasCover": true,
       "toc": [
         {
-          "title": "1 生命の起源と進化 1 生命の起源 2",
-          "page": 0,
+          "title": "1 生命の起源と進化",
+          "page": null,
           "level": 1
         },
         {
-          "title": "2 細胞内共生説 6",
+          "title": "1 生命の起源",
           "page": 1,
-          "level": 1
+          "level": 2
         },
         {
-          "title": "3 生物の変遷 10",
-          "page": 2,
-          "level": 1
-        },
-        {
-          "title": "2 有性生殖 1 生殖と染色体 16",
-          "page": 3,
-          "level": 1
-        },
-        {
-          "title": "2 遺伝の法則 24",
-          "page": 4,
-          "level": 1
-        },
-        {
-          "title": "3 さまざまな遺伝現象 30",
+          "title": "2 細胞内共生説",
           "page": 5,
-          "level": 1
-        },
-        {
-          "title": "4 連鎖と組換え 36",
-          "page": 6,
           "level": 2
         },
         {
-          "title": "3 生物の進化と系統 1 進化のしくみ 44",
-          "page": 7,
-          "level": 1
-        },
-        {
-          "title": "2 進化の過程で起こること 50",
-          "page": 8,
-          "level": 1
-        },
-        {
-          "title": "3 生物の分類 56",
+          "title": "3 生物の変遷",
           "page": 9,
+          "level": 2
+        },
+        {
+          "title": "2 有性生殖",
+          "page": null,
           "level": 1
         },
         {
-          "title": "4 原核生物の分類 64",
-          "page": 10,
-          "level": 2
-        },
-        {
-          "title": "5 原生生物の分類 68",
-          "page": 11,
-          "level": 2
-        },
-        {
-          "title": "6 植物の分類 76",
-          "page": 12,
-          "level": 2
-        },
-        {
-          "title": "7 植物の生活環 82",
-          "page": 13,
-          "level": 2
-        },
-        {
-          "title": "8 菌の分類 86",
-          "page": 14,
-          "level": 2
-        },
-        {
-          "title": "9 動物の分類 90",
+          "title": "1 生殖と染色体",
           "page": 15,
           "level": 2
         },
         {
-          "title": "10動物の分類群 98",
-          "page": 16,
-          "level": 1
-        },
-        {
-          "title": "11人類の起源 110",
-          "page": 17,
-          "level": 1
-        },
-        {
-          "title": "1 生物体を構成する物質 1161生命と物質",
-          "page": 18,
-          "level": 1
-        },
-        {
-          "title": "2 細胞の構造 120",
-          "page": 19,
-          "level": 1
-        },
-        {
-          "title": "3 細胞の観察 130",
-          "page": 20,
-          "level": 1
-        },
-        {
-          "title": "4 生体膜 136",
-          "page": 21,
-          "level": 2
-        },
-        {
-          "title": "5 タンパク質 142",
-          "page": 22,
-          "level": 2
-        },
-        {
-          "title": "6 酵素 148",
+          "title": "2 遺伝の法則",
           "page": 23,
           "level": 2
         },
         {
+          "title": "3 さまざまな遺伝現象",
+          "page": 29,
+          "level": 2
+        },
+        {
+          "title": "4 連鎖と組換え",
+          "page": 35,
+          "level": 2
+        },
+        {
+          "title": "3 生物の進化と系統",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 進化のしくみ",
+          "page": 43,
+          "level": 2
+        },
+        {
+          "title": "2 進化の過程で起こること",
+          "page": 49,
+          "level": 2
+        },
+        {
+          "title": "3 生物の分類",
+          "page": 55,
+          "level": 2
+        },
+        {
+          "title": "4 原核生物の分類",
+          "page": 63,
+          "level": 2
+        },
+        {
+          "title": "5 原生生物の分類",
+          "page": 67,
+          "level": 2
+        },
+        {
+          "title": "6 植物の分類",
+          "page": 75,
+          "level": 2
+        },
+        {
+          "title": "7 植物の生活環",
+          "page": 81,
+          "level": 2
+        },
+        {
+          "title": "8 菌の分類",
+          "page": 85,
+          "level": 2
+        },
+        {
+          "title": "9 動物の分類",
+          "page": 89,
+          "level": 2
+        },
+        {
+          "title": "10動物の分類群",
+          "page": 97,
+          "level": 2
+        },
+        {
+          "title": "11人類の起源",
+          "page": 109,
+          "level": 2
+        },
+        {
+          "title": "1 生物体を構成する物質 1161生命と物質",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "2 細胞の構造",
+          "page": 119,
+          "level": 2
+        },
+        {
+          "title": "3 細胞の観察",
+          "page": 129,
+          "level": 2
+        },
+        {
+          "title": "4 生体膜",
+          "page": 135,
+          "level": 2
+        },
+        {
+          "title": "5 タンパク質",
+          "page": 141,
+          "level": 2
+        },
+        {
+          "title": "6 酵素",
+          "page": 147,
+          "level": 2
+        },
+        {
           "title": "1 呼吸 1542代謝",
-          "page": 24,
+          "page": null,
           "level": 1
         },
         {
-          "title": "2 呼吸商・発酵と解糖 160",
-          "page": 25,
-          "level": 1
+          "title": "2 呼吸商・発酵と解糖",
+          "page": 159,
+          "level": 2
         },
         {
-          "title": "3 光合成色素・光合成のしくみ 166",
-          "page": 26,
-          "level": 1
+          "title": "3 光合成色素・光合成のしくみ",
+          "page": 165,
+          "level": 2
         },
         {
-          "title": "4 光合成の研究・環境と光合成 174",
-          "page": 27,
+          "title": "4 光合成の研究・環境と光合成",
+          "page": 173,
           "level": 2
         },
         {
           "title": "5 C 1804回路・細菌の炭酸同化",
-          "page": 28,
-          "level": 2
+          "page": null,
+          "level": 1
         }
       ],
       "hasIdx": true,
       "pageCount": 286,
-      "comment": ""
+      "comment": "",
+      "pdfFiles": [
+        "高校生物上-1.pdf",
+        "高校生物上-2.pdf"
+      ]
     },
     {
       "id": "bk_1778996435784_tzn",
