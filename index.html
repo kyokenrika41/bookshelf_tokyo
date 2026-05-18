@@ -214,6 +214,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
   <div id="bp-tabs">
     <button class="bpt on" onclick="switchBPTab('toc')">📑 目次</button>
     <button class="bpt" onclick="switchBPTab('search')">🔍 検索</button>
+    <button class="bpt" id="bpt-pdf-btn" onclick="switchBPTab('pdf')" style="display:none">📄 本文</button>
     <button class="bpt" onclick="switchBPTab('comment')">💬 コメント</button>
   </div>
   <div id="bpbody">
@@ -225,6 +226,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
       </div>
       <div id="bpresults"></div>
     </div>
+    <div class="bptab" id="bpt-pdf" style="padding:0"></div>
     <div class="bptab" id="bpt-comment">
       <div id="bpcmt-wrap"></div>
     </div>
@@ -406,7 +408,18 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
       <button class="btn btn-p" onclick="saveSetup()" style="background:#1a3a6a">💾 設定を保存</button>
       <span id="setup-st" style="font-size:12px;color:var(--mid);margin-left:10px"></span>
     </div>
-    <div class="gh-box" style="margin-top:12px;border-color:#d4a373">
+    <div class="gh-box" style="margin-top:12px;border-color:#1a73e8">
+      <div class="gh-box-title" style="color:#1a3a7a">📂 本文PDF 閲覧ドライブ設定（全冊共通・任意）</div>
+      <div class="fg" style="margin-bottom:6px">
+        <label class="fl" style="font-size:12px">共有フォルダURL（Google Drive / Dropbox など）</label>
+        <input class="fi" type="url" id="s-drive" placeholder="https://drive.google.com/drive/folders/..." style="font-size:12px;padding:7px 10px">
+        <small style="font-size:11px;color:var(--muted)">
+          設定すると全ての本に「📄 本文」タブが表示されます。<br>
+          Google Driveは「リンクを知っている全員が閲覧可」で共有したフォルダURLを貼ってください。
+        </small>
+      </div>
+      <button class="btn btn-p" onclick="saveSetup()" style="background:#1a3a7a">💾 設定を保存</button>
+    </div>
       <div class="gh-box-title" style="color:#7c4d00">🤖 Claude API設定（画像PDF・OCR用）</div>
       <div class="fg" style="margin-bottom:6px">
         <label class="fl" style="font-size:12px">Anthropic APIキー（画像PDFのテキスト抽出に使用）</label>
@@ -439,7 +452,7 @@ const DEFAULT_REPO='kyokenrika41/bookshelf_tokyo';
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 // ★ Bug Fix: cdnjsにはcmapファイルが含まれていないため、jsDelivrを使用する
 const PDFJS_OPTS={cMapUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',cMapPacked:true,standardFontDataUrl:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'};
-const LS_REPO='bk3_repo',LS_TOKEN='bk3_token',LS_CACHE='bk3_cache',LS_CACHE_TS='bk3_cache_ts',LS_CLAUDE='bk3_claude';
+const LS_REPO='bk3_repo',LS_TOKEN='bk3_token',LS_CACHE='bk3_cache',LS_CACHE_TS='bk3_cache_ts',LS_CLAUDE='bk3_claude',LS_DRIVE='bk3_drive';
 const META_PATH='data/meta.json';
 const COVER_PATH=id=>`data/covers/${id}.txt`;
 const IDX_PATH=id=>`data/idx/${id}.json`;
@@ -627,7 +640,10 @@ function openBook(bid){
   document.getElementById('bp-subj').textContent=s?s.name:'';
   let title=b.title||'';if(b.vol)title+=' '+b.vol;if(b.author)title+=' '+b.author+'先生';
   document.getElementById('bp-title').textContent=title;
-  renderBPToc(b);renderBPComment(b);
+  // 本文タブ：グローバルドライブURLが設定されていれば表示
+  const pdfBtn=document.getElementById('bpt-pdf-btn');
+  pdfBtn.style.display=localStorage.getItem(LS_DRIVE)?'':'none';
+  renderBPToc(b);renderBPComment(b);renderBPPdf(b);
   switchBPTab('toc');
   document.getElementById('bpkw').value='';document.getElementById('bpresults').innerHTML='';
   document.getElementById('bp').classList.add('on');document.getElementById('bpov').classList.add('on');
@@ -635,12 +651,74 @@ function openBook(bid){
 function closeBP(){document.getElementById('bp').classList.remove('on');document.getElementById('bpov').classList.remove('on');}
 
 function switchBPTab(tab){
-  const tabs=['toc','search','comment'];
-  tabs.forEach((t,i)=>{document.querySelectorAll('.bpt')[i].classList.toggle('on',t===tab);document.getElementById('bpt-'+t).classList.toggle('on',t===tab);});
+  const tabs=['toc','search','pdf','comment'];
+  const btns=document.querySelectorAll('.bpt');
+  // タブとボタンをそれぞれ対応付け（本文タブは動的に表示/非表示のためquerySelectorAllで対応）
+  tabs.forEach(t=>{
+    const bd=document.getElementById('bpt-'+t);if(bd)bd.classList.toggle('on',t===tab);
+  });
+  btns.forEach(btn=>{
+    const onclick=btn.getAttribute('onclick')||'';
+    btn.classList.toggle('on',onclick.includes("'"+tab+"'"));
+  });
   if(tab==='search')setTimeout(()=>document.getElementById('bpkw').focus(),50);
 }
 
-function renderBPToc(b){
+// 共有URLをiframe埋め込み可能な形式に変換
+function toPdfEmbedUrl(url){
+  if(!url)return '';
+  // Google Drive フォルダ → embeddedfolderview
+  const gdf=url.match(/drive\.google\.com\/drive\/folders\/([^\/\?&]+)/);
+  if(gdf)return `https://drive.google.com/embeddedfolderview?id=${gdf[1]}#list`;
+  // Google Drive ファイル → preview
+  const gd=url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+  if(gd)return `https://drive.google.com/file/d/${gd[1]}/preview`;
+  // Dropbox → 直接DL
+  if(url.includes('dropbox.com'))
+    return url.replace('www.dropbox.com','dl.dropboxusercontent.com').replace('?dl=0','?dl=1');
+  return url;
+}
+
+// 本文PDFタブを描画（グローバルドライブURL＋ファイル名ヒント）
+function renderBPPdf(b){
+  const c=document.getElementById('bpt-pdf');
+  const driveUrl=localStorage.getItem(LS_DRIVE)||'';
+  if(!driveUrl){
+    c.innerHTML='<div class="bpempty" style="padding:40px 20px">⚙️ 設定（💾ボタン）から「本文PDF 閲覧ドライブURL」を設定してください</div>';
+    return;
+  }
+  const embedUrl=toPdfEmbedUrl(driveUrl);
+  const files=(b.pdfFiles&&b.pdfFiles.length)?b.pdfFiles:[];
+
+  // ファイル名ヒントバナー
+  const hintHtml=files.length
+    ?`<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#e8f4fd;border-bottom:1px solid #bee3f8;font-size:12px;flex-shrink:0">
+        <span style="font-size:16px">📂</span>
+        <span>以下のファイルを探して開いてください：
+          <strong>${files.map(f=>`「${f}」`).join(' / ')}</strong>
+        </span>
+        <a href="${driveUrl}" target="_blank"
+           style="margin-left:auto;flex-shrink:0;padding:4px 10px;background:white;border:1px solid #90cdf4;
+                  border-radius:12px;font-size:11px;color:#2b6cb0;text-decoration:none;white-space:nowrap">
+          🔗 別タブで開く
+        </a>
+      </div>`
+    :`<div style="display:flex;align-items:center;padding:6px 14px;background:#f7fafc;border-bottom:1px solid #e2e8f0;font-size:12px;flex-shrink:0">
+        <span style="color:#718096">📂 フォルダを開いて本を選んでください</span>
+        <a href="${driveUrl}" target="_blank"
+           style="margin-left:auto;padding:4px 10px;background:white;border:1px solid #e2e8f0;
+                  border-radius:12px;font-size:11px;color:#4a5568;text-decoration:none">
+          🔗 別タブで開く
+        </a>
+      </div>`;
+
+  c.innerHTML=`
+    <div style="display:flex;flex-direction:column;height:70vh">
+      ${hintHtml}
+      <iframe src="${embedUrl}" style="flex:1;width:100%;border:none" allow="fullscreen" loading="lazy" title="本文PDFフォルダ"></iframe>
+    </div>`;
+}
+}
   const c=document.getElementById('bpt-toc');c.innerHTML='';
   if(b.tocUrl){
     const a=document.createElement('a');a.href=b.tocUrl;a.target='_blank';
@@ -1064,6 +1142,30 @@ async function ocrSelectPages(u8,pageNums,allPages){
   return result;
 }
 
+// TOCエントリの後処理：章見出しとレッスンが同一行に結合されているケースを分割する
+// 例: "1 生命の起源と進化 1 生命の起源" (page=1) →
+//   [{title:"1 生命の起源と進化", page:null, level:1}, {title:"1 生命の起源", page:1, level:2}]
+function splitMergedTocEntries(items){
+  const result=[];
+  for(const item of items){
+    if(item.page!==null&&item.title){
+      // 「数字+テキスト+スペース+数字+テキスト」の二重パターンを検出
+      // 例: "1 生命の起源と進化 1 生命の起源"
+      //       ↑章部分↑         ↑レッスン部分↑
+      const m=item.title.match(/^(\d+\s+\S.*?[^\d\s])\s+(\d+\s+\S.*)$/);
+      if(m&&m[1].trim()!==item.title.trim()){
+        // 章見出し（ページ番号なし）
+        result.push({title:m[1].trim(),page:null,level:1});
+        // レッスン（元のページを引き継ぐ）
+        result.push({title:m[2].trim(),page:item.page,level:2});
+        continue;
+      }
+    }
+    result.push(item);
+  }
+  return result;
+}
+
 async function extractToc(file){
   const buf=await file.arrayBuffer();const u8=new Uint8Array(buf);
   try{
@@ -1153,8 +1255,9 @@ async function extractToc(file){
         }
         const valid=result.filter(r=>r.page!==null&&r.page>=0).length;
         if(valid>=3){
-          console.log('TOC[X] X列分離:',result.length,'件（有効:',valid,'件）');
-          return result;
+          const split=splitMergedTocEntries(result);
+          console.log('TOC[X] X列分離:',split.length,'件（有効:',split.filter(r=>r.page!==null).length,'件）');
+          return split;
         }
       }
     }
@@ -1206,8 +1309,9 @@ async function extractToc(file){
     }
     // ページ番号が確定したエントリが3件以上あれば採用
     if(inlineResults.filter(r=>r.page!==null).length>=3){
-      console.log('TOC[B] インライン:',inlineResults.length,'件（うちページ付き:',inlineResults.filter(r=>r.page!==null).length,'件）');
-      return inlineResults;
+      const split=splitMergedTocEntries(inlineResults);
+      console.log('TOC[B] インライン:',split.length,'件（うちページ付き:',split.filter(r=>r.page!==null).length,'件）');
+      return split;
     }
 
     // [A] 前後分離形式（カウントが近い場合のみ）
@@ -1589,7 +1693,11 @@ async function saveBook(){
   const btn=document.getElementById('b-save-btn');btn.disabled=true;btn.textContent='⌛ 保存中…';
   if(_editBid){
     const b=db.books.find(x=>x.id===_editBid);if(!b){btn.disabled=false;return;}
-    Object.assign(b,{title,vol,author,date,dtype,tocUrl});
+    // 今回アップロードしたPDFファイル名を蓄積（ドライブ閲覧時のヒント用）
+    const newFiles=_tmpPdfFiles.map(f=>f.name);
+    const existingFiles=b.pdfFiles||[];
+    const merged=[...new Set([...existingFiles,...newFiles])];
+    Object.assign(b,{title,vol,author,date,dtype,tocUrl,pdfFiles:merged});
     if(_tmpCover){b.hasCover=true;_covers[_editBid]=_tmpCover;}
     if(_tmpToc)b.toc=_tmpToc;
     if(_tmpIdx&&_tmpIdx.length){
@@ -1602,7 +1710,8 @@ async function saveBook(){
     }
   } else {
     const id='bk_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
-    const b={id,sid:_editSid,title,vol,author,date,dtype,tocUrl,hasCover:!!_tmpCover,toc:_tmpToc||[],hasIdx:!!(_tmpIdx&&_tmpIdx.length),pageCount:_tmpIdx?_tmpIdx.length:0,comment:''};
+    const pdfFiles=_tmpPdfFiles.map(f=>f.name);
+    const b={id,sid:_editSid,title,vol,author,date,dtype,tocUrl,pdfFiles,hasCover:!!_tmpCover,toc:_tmpToc||[],hasIdx:!!(_tmpIdx&&_tmpIdx.length),pageCount:_tmpIdx?_tmpIdx.length:0,comment:''};
     db.books.push(b);_editBid=id;
     if(_tmpCover)_covers[id]=_tmpCover;
     if(_tmpIdx&&_tmpIdx.length)_indexes[id]=_tmpIdx;
@@ -1635,6 +1744,7 @@ function openSetup(){
   document.getElementById('s-repo').value=GH.repo;
   document.getElementById('s-token').value=GH.token;
   document.getElementById('s-claude').value=localStorage.getItem(LS_CLAUDE)||'';
+  document.getElementById('s-drive').value=localStorage.getItem(LS_DRIVE)||'';
   document.getElementById('setup-st').textContent='';
   document.getElementById('claude-status').textContent=
     localStorage.getItem(LS_CLAUDE)?'✅ APIキー設定済み（画像PDFのOCRにClaudeを使用します）':'未設定（画像PDFはTesseract OCRを使用）';
@@ -1649,9 +1759,12 @@ function saveSetup(){
   const repo=document.getElementById('s-repo').value.trim();
   const token=document.getElementById('s-token').value.trim();
   const claude=document.getElementById('s-claude').value.trim();
+  const drive=document.getElementById('s-drive').value.trim();
   localStorage.setItem(LS_REPO,repo);localStorage.setItem(LS_TOKEN,token);
   if(claude)localStorage.setItem(LS_CLAUDE,claude);
   else localStorage.removeItem(LS_CLAUDE);
+  if(drive)localStorage.setItem(LS_DRIVE,drive);
+  else localStorage.removeItem(LS_DRIVE);
   document.getElementById('setup-st').textContent='✅ 保存しました';
   document.getElementById('claude-status').textContent=
     claude?'✅ APIキー設定済み（画像PDFのOCRにClaudeを使用します）':'未設定（画像PDFはTesseract OCRを使用）';
