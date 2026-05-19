@@ -560,7 +560,7 @@ function switchSid(sid){
   _curSid=sid;_filterQ='';document.getElementById('srch').value='';
   renderTabs();renderBooks();
   const eb=document.getElementById('editbtn');
-  eb.style.display=(sid!=='all'&&GH.token)?'':'none';
+  eb.style.display=sid!=='all'?'':'none';
 }
 function filterBooks(q){_filterQ=q.toLowerCase();renderBooks();}
 function goHome(){_curSid='all';_editSid=null;_filterQ='';document.getElementById('srch').value='';renderAll();}
@@ -753,18 +753,21 @@ function renderBPToc(b){
 
 function renderBPComment(b){
   const w=document.getElementById('bpcmt-wrap');w.innerHTML='';
-  const note=document.createElement('p');note.style.cssText='font-size:12px;color:var(--muted);margin-bottom:8px';
-  note.textContent=_editSid?'メモ・感想を入力できます':'コメントの編集は編集モードで行ってください';
+  // コメントは常に編集可。保存時にトークンが未設定なら入力ダイアログが出る
+  const note=document.createElement('p');
+  note.style.cssText='font-size:12px;color:var(--muted);margin-bottom:8px';
+  note.textContent='メモ・感想を入力できます（💾ボタンで保存）';
   const ta=document.createElement('textarea');
-  ta.style.cssText='width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:120px;line-height:1.7;font-family:var(--sans)';
-  ta.id='bpcmt-ta';ta.placeholder='コメントを入力…';ta.value=b.comment||'';ta.readOnly=!_editSid;
-  if(_editSid){ta.style.background='#fff';ta.onfocus=()=>ta.style.borderColor='var(--ac)';}
-  w.appendChild(note);w.appendChild(ta);
-  if(_editSid){
-    const row=document.createElement('div');row.style.cssText='margin-top:10px;text-align:right';
-    const btn=document.createElement('button');btn.className='btn btn-p btn-sm';btn.textContent='💾 保存';
-    btn.onclick=saveComment;row.appendChild(btn);w.appendChild(row);
-  }
+  ta.style.cssText='width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:#fff;color:var(--text);outline:none;resize:vertical;min-height:120px;line-height:1.7;font-family:var(--sans)';
+  ta.id='bpcmt-ta';ta.placeholder='コメントを入力…';ta.value=b.comment||'';
+  ta.onfocus=()=>ta.style.borderColor='var(--ac)';
+  ta.onblur=()=>ta.style.borderColor='var(--bd)';
+  const row=document.createElement('div');
+  row.style.cssText='margin-top:10px;text-align:right';
+  const btn=document.createElement('button');
+  btn.className='btn btn-p btn-sm';btn.textContent='💾 保存';
+  btn.onclick=saveComment;row.appendChild(btn);
+  w.appendChild(note);w.appendChild(ta);w.appendChild(row);
 }
 function saveComment(){
   const b=db.books.find(x=>x.id===_bpBid);if(!b)return;
@@ -1736,6 +1739,45 @@ async function deleteBook(bid){
    SAVE TO GITHUB
    ★ Bug Fix: 旧定義を削除。下部のwindow.saveAllToGitHubが有効版です。
 ============================================= */
+
+// トークン未設定時にダイアログで入力を求める（別PCからの初回編集時に使用）
+async function promptForToken(){
+  if(GH.token)return true;
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML=`
+      <div style="background:#fff;border-radius:14px;padding:24px 24px 20px;width:100%;max-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+        <h3 style="margin:0 0 8px;font-size:15px;color:#1a3a6a">🔑 GitHubトークンを入力</h3>
+        <p style="font-size:12px;color:#666;margin:0 0 14px;line-height:1.6">
+          このPCで初めて保存する場合、GitHub Personal Access Tokenが必要です。<br>
+          入力後はこのブラウザに保存され、次回以降は不要です。
+        </p>
+        <input id="_tok_inp" type="password" autocomplete="new-password"
+          placeholder="ghp_xxxxxxxxxxxx"
+          style="width:100%;padding:9px 11px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;outline:none">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button id="_tok_cancel" style="padding:8px 16px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:13px">キャンセル</button>
+          <button id="_tok_ok" style="padding:8px 16px;border:none;border-radius:8px;background:#1a3a6a;color:#fff;cursor:pointer;font-size:13px;font-weight:600">保存して続行</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const inp=ov.querySelector('#_tok_inp');
+    const ok=ov.querySelector('#_tok_ok');
+    const cancel=ov.querySelector('#_tok_cancel');
+    inp.focus();
+    const submit=()=>{
+      const t=inp.value.trim();
+      if(!t){inp.style.borderColor='#e53e3e';inp.focus();return;}
+      localStorage.setItem(LS_TOKEN,t);
+      document.body.removeChild(ov);
+      resolve(true);
+    };
+    ok.onclick=submit;
+    cancel.onclick=()=>{document.body.removeChild(ov);resolve(false);};
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')submit();});
+  });
+}
 async function saveLocalAndToGitHub(msg){
   saveCache();if(GH.repo&&GH.token)return saveAllToGitHub(msg);return true;
 }
@@ -1864,12 +1906,16 @@ document.querySelector('#m-setup .btn-p[onclick="saveAllToGitHub()"]') && null;
 // saveAllToGitHub を設定モーダルから呼べるようにオーバーライド
 window.saveAllToGitHub = async function(msg) {
   const st=document.getElementById('gh-st');
-  if(st)st.textContent='🔄 保存中…';
-  if(!GH.repo||!GH.token){
-    toast('⚠️ GitHubの設定が未完了です。');
+  if(!GH.repo){
+    toast('⚠️ リポジトリが設定されていません。💾ボタンから設定してください。');
     if(st)st.textContent='';
     return false;
   }
+  if(!GH.token){
+    const ok=await promptForToken();
+    if(!ok){if(st)st.textContent='';return false;}
+  }
+  if(st)st.textContent='🔄 保存中…';
   db.updated=new Date().toISOString();
   setBar(0.2);
   const r=await GH.write(META_PATH,JSON.stringify(db,null,2),msg||'更新');
