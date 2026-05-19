@@ -816,7 +816,9 @@ function normalizeStr(s){
     .replace(/[ａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
     .replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
     .replace(/　/g,' ')
-    .toLowerCase();
+    .toLowerCase()
+    // OCRが日本語文字間に挿入するスペースを除去（「地 球」→「地球」）
+    .replace(/([\u3040-\u30FF\u4E00-\u9FFF])\s+(?=[\u3040-\u30FF\u4E00-\u9FFF])/g,'$1');
 }
 
 /* =============================================
@@ -1087,7 +1089,10 @@ async function ocrPdf(u8,pageCount,fallbackPages){
         const pg=await doc.getPage(i);
         const cv=await renderPageToCanvas(pg,2.0);
         const res=await worker.recognize(cv);
-        const txt=(res.data.text||'').replace(/\s+/g,' ').trim();
+        // OCRテキストの後処理：日本語文字間のスペース除去（「地 球」→「地球」）
+        let txt=(res.data.text||'').trim();
+        txt=txt.replace(/([\u3040-\u30FF\u4E00-\u9FFF])\s+(?=[\u3040-\u30FF\u4E00-\u9FFF])/g,'$1');
+        txt=txt.replace(/\s+/g,' ').trim();
         pages.push({p:i,t:txt});
       }catch(e){
         console.warn(`OCR ${i}ページエラー:`,e);
@@ -1138,7 +1143,9 @@ async function ocrSelectPages(u8,pageNums,allPages){
         const pg=await doc.getPage(i);
         const cv=await renderPageToCanvas(pg,2.0);
         const res=await worker.recognize(cv);
-        result[i]=(res.data.text||'').replace(/\s+/g,' ').trim();
+        let txt=(res.data.text||'').trim();
+        txt=txt.replace(/([\u3040-\u30FF\u4E00-\u9FFF])\s+(?=[\u3040-\u30FF\u4E00-\u9FFF])/g,'$1');
+        result[i]=txt.replace(/\s+/g,' ').trim();
       }catch(e){result[i]='';}
     }
   }finally{
