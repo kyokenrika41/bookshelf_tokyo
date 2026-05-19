@@ -1,6 +1,6 @@
 {
   "v": 3,
-  "updated": "2026-05-19T01:17:01.720Z",
+  "updated": "2026-05-19T08:58:09.435Z",
   "subjects": [
     {
       "id": "sj_1776844796256",
@@ -393,6 +393,176 @@
         "高校地学-1.pdf",
         "高校地学-2.pdf"
       ]
+    },
+    {
+      "id": "bk_1779180982675_byc",
+      "sid": "sj_1776844796256",
+      "title": "スタンダード化学",
+      "vol": "無機化学編",
+      "author": "福田訓久",
+      "date": "2026-03-01",
+      "dtype": "revision",
+      "tocUrl": "",
+      "pdfFiles": [
+        "すた化学無機-1.pdf",
+        "すた化学無機-2.pdf"
+      ],
+      "hasCover": true,
+      "toc": [
+        {
+          "title": "1 元素の分類と周期表",
+          "page": 1,
+          "level": 2
+        },
+        {
+          "title": "2 周期表の元素の性質",
+          "page": 5,
+          "level": 2
+        },
+        {
+          "title": "10117 族元素①（ハロゲンの特徴）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "12217 族元素②（塩素の性質とその製法）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "16316 族元素①（酸素とオゾン）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "20416 族元素②（硫化水素の発生と性質）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "22516 族元素③（硫黄とその化合物）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "26615 族元素①（窒素とその化合物）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "30715 族元素②（リンとその化合物）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "32814 族元素①（炭素）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "36914 族元素②（ケイ素とその化合物）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "4010気体の製法①（気体の製法・性質）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "4311気体の製法②（気体の乾燥・精製）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "4412気体の製法③（気体の推定）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "4813無機化学工業①（アンモニアの工業的製法）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "5214無機化学工業②（硝酸の工業的製法）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "5415無機化学工業③（硫酸の工業的製法）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 アルカリ金属とアルカリ土類金属",
+          "page": 59,
+          "level": 2
+        },
+        {
+          "title": "2 無機化学工業 （炭酸ナトリウムの工業的製法）",
+          "page": 65,
+          "level": 2
+        },
+        {
+          "title": "703両性金属",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1 銀の単体と化合物",
+          "page": 73,
+          "level": 2
+        },
+        {
+          "title": "2 クロムの錯体",
+          "page": 77,
+          "level": 2
+        },
+        {
+          "title": "3 鉄の製錬",
+          "page": 79,
+          "level": 2
+        },
+        {
+          "title": "4 コバルトの錯イオン",
+          "page": 83,
+          "level": 2
+        },
+        {
+          "title": "5 銅の単体と化合物",
+          "page": 87,
+          "level": 2
+        },
+        {
+          "title": "941イオン反応（金属イオンの反応）",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "982陽イオンの分離",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1023陰イオンの分離",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1064イオンの分離操作",
+          "page": null,
+          "level": 1
+        },
+        {
+          "title": "1085化合物の識別",
+          "page": null,
+          "level": 1
+        }
+      ],
+      "hasIdx": true,
+      "pageCount": 118,
+      "comment": ""
     }
   ]
 }
