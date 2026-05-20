@@ -730,6 +730,12 @@ function renderBPToc(b){
   }
   if(b.toc&&b.toc.length){
     b.toc.forEach(t=>{
+      // 章区切り線（inferChapterBreaksで自動挿入）
+      if(t._divider){
+        const div=document.createElement('div');
+        div.style.cssText='border-top:1px solid var(--bd);margin:8px 0 6px;opacity:0.5';
+        c.appendChild(div);return;
+      }
       const isHdr=(t.page===null||t.page===undefined);
       const el=document.createElement('div');
       el.className='toci'+(isHdr?' hd':' l'+(t.level||1));
@@ -1234,24 +1240,42 @@ async function ocrSelectPages(u8,pageNums,allPages){
   return result;
 }
 
-// TOCエントリの後処理：章見出しとレッスンが同一行に結合されているケースを分割する
-// 例: "1 生命の起源と進化 1 生命の起源" (page=1) →
-//   [{title:"1 生命の起源と進化", page:null, level:1}, {title:"1 生命の起源", page:1, level:2}]
+// TOCエントリの後処理：章とレッスンが同一行に結合されているケースを分割する
 function splitMergedTocEntries(items){
   const result=[];
   for(const item of items){
     if(item.page!==null&&item.title){
-      // 「数字+テキスト+スペース+数字+テキスト」の二重パターンを検出
-      // 例: "1 生命の起源と進化 1 生命の起源"
-      //       ↑章部分↑         ↑レッスン部分↑
       const m=item.title.match(/^(\d+\s+\S.*?[^\d\s])\s+(\d+\s+\S.*)$/);
       if(m&&m[1].trim()!==item.title.trim()){
-        // 章見出し（ページ番号なし）
         result.push({title:m[1].trim(),page:null,level:1});
-        // レッスン（元のページを引き継ぐ）
         result.push({title:m[2].trim(),page:item.page,level:2});
         continue;
       }
+    }
+    result.push(item);
+  }
+  return result;
+}
+
+// TOCエントリの後処理：レッスン番号が「1」にリセットされる箇所に章区切りを自動挿入
+// 例: [..., {title:"3 両性金属"}, {title:"1 17族元素①"}] → 「1」リセットで章区切り追加
+function inferChapterBreaks(items){
+  if(!items||items.length<4)return items;
+  const result=[];
+  let prevLessonNum=0;
+  let chapterCount=0;
+  for(let i=0;i<items.length;i++){
+    const item=items[i];
+    // ページ付きのレッスン行でレッスン番号を取得
+    const mNum=item.title&&item.page!==null?item.title.match(/^(\d+)[\s　]/):null;
+    const lessonNum=mNum?parseInt(mNum[1]):null;
+    if(lessonNum===1&&prevLessonNum>1&&chapterCount>0){
+      // 番号が1にリセット → 暗黙の章区切りを挿入
+      result.push({title:'───────',page:null,level:1,_divider:true});
+    }
+    if(lessonNum!==null){
+      prevLessonNum=lessonNum;
+      if(lessonNum===1)chapterCount++;
     }
     result.push(item);
   }
@@ -1332,25 +1356,29 @@ async function extractToc(file){
           numByPage[ni.page].push({y:ni.y,num:parseInt(ni.s),used:false});
         });
 
-        // Y距離を25ptに拡大（わずかな行間ズレに対応）
+        // ページ番号マッチング：Y距離の閾値を撤廃し常に最近傍に貪欲マッチ
+        // （PDFによってY座標が微妙にずれていても確実に対応するため）
         const result=[];
-        const Y_THRESH=25;
         for(const tl of tLines){
           const pnums=(numByPage[tl.page]||[]);
           let bestIdx=-1,bestDist=Infinity;
-          pnums.forEach((pn,idx)=>{if(!pn.used){const d=Math.abs(pn.y-tl.y);if(d<bestDist){bestDist=d;bestIdx=idx;}}});
-          if(bestIdx>=0&&bestDist<Y_THRESH){
+          pnums.forEach((pn,idx)=>{
+            if(!pn.used){const d=Math.abs(pn.y-tl.y);if(d<bestDist){bestDist=d;bestIdx=idx;}}
+          });
+          if(bestIdx>=0){
             pnums[bestIdx].used=true;
             result.push({title:tl.text.trim(),page:pnums[bestIdx].num-1,level:2});
           }else{
+            // ページ番号が残っていない行 → 章見出し扱い
             result.push({title:tl.text.trim(),page:null,level:1});
           }
         }
         const valid=result.filter(r=>r.page!==null&&r.page>=0).length;
         if(valid>=3){
           const split=splitMergedTocEntries(result);
-          console.log('TOC[X] X列分離:',split.length,'件（有効:',split.filter(r=>r.page!==null).length,'件）');
-          return split;
+          const withChapters=inferChapterBreaks(split);
+          console.log('TOC[X] X列分離:',withChapters.length,'件（有効:',withChapters.filter(r=>r.page!==null).length,'件）');
+          return withChapters;
         }
       }
     }
@@ -1403,8 +1431,9 @@ async function extractToc(file){
     // ページ番号が確定したエントリが3件以上あれば採用
     if(inlineResults.filter(r=>r.page!==null).length>=3){
       const split=splitMergedTocEntries(inlineResults);
-      console.log('TOC[B] インライン:',split.length,'件（うちページ付き:',split.filter(r=>r.page!==null).length,'件）');
-      return split;
+      const withChapters=inferChapterBreaks(split);
+      console.log('TOC[B] インライン:',withChapters.length,'件（うちページ付き:',withChapters.filter(r=>r.page!==null).length,'件）');
+      return withChapters;
     }
 
     // [A] 前後分離形式（カウントが近い場合のみ）
