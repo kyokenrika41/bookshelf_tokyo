@@ -751,29 +751,108 @@ function renderBPToc(b){
   }
 }
 
+// コメントシステム（配列ベース：add/edit/delete）
 function renderBPComment(b){
-  const w=document.getElementById('bpcmt-wrap');w.innerHTML='';
-  // コメントは常に編集可。保存時にトークンが未設定なら入力ダイアログが出る
-  const note=document.createElement('p');
-  note.style.cssText='font-size:12px;color:var(--muted);margin-bottom:8px';
-  note.textContent='メモ・感想を入力できます（💾ボタンで保存）';
+  // 旧形式（単一文字列）から新形式（配列）へ自動移行
+  if(b.comment&&!b.comments){
+    b.comments=[{id:'c_'+Date.now(),text:b.comment,ts:b.updated||''}];
+    delete b.comment;
+  }
+  if(!b.comments)b.comments=[];
+  _renderCommentList(b,document.getElementById('bpcmt-wrap'));
+}
+
+function _renderCommentList(b,w){
+  w.innerHTML='';
+  if(b.comments&&b.comments.length){
+    b.comments.forEach(c=>{
+      const item=document.createElement('div');
+      item.style.cssText='border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff;position:relative';
+      item.dataset.id=c.id;
+      const txt=document.createElement('div');
+      txt.style.cssText='font-size:13px;line-height:1.8;white-space:pre-wrap;color:var(--text);padding-right:64px';
+      txt.textContent=c.text;
+      const acts=document.createElement('div');
+      acts.style.cssText='position:absolute;top:8px;right:8px;display:flex;gap:4px';
+      const mkBtn=(icon,tip,bg,fn)=>{
+        const b=document.createElement('button');b.title=tip;b.textContent=icon;
+        b.style.cssText='border:none;background:none;cursor:pointer;font-size:15px;padding:3px 5px;border-radius:5px';
+        b.onmouseenter=()=>b.style.background=bg;b.onmouseleave=()=>b.style.background='none';
+        b.onclick=fn;return b;
+      };
+      acts.appendChild(mkBtn('✏️','編集','#f0f0f0',()=>_startEditComment(b,c.id,w)));
+      acts.appendChild(mkBtn('🗑️','削除','#fee',async()=>{
+        if(!confirm('このコメントを削除しますか？'))return;
+        b.comments=b.comments.filter(x=>x.id!==c.id);
+        const ok=await saveAllToGitHub('コメント削除');
+        if(ok){_renderCommentList(b,w);toast('🗑️ 削除しました');}
+      }));
+      const ts=document.createElement('div');
+      ts.style.cssText='font-size:10px;color:var(--muted);margin-top:6px';
+      ts.textContent=c.ts?new Date(c.ts).toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+      item.appendChild(acts);item.appendChild(txt);item.appendChild(ts);
+      w.appendChild(item);
+    });
+  }else{
+    const p=document.createElement('p');
+    p.style.cssText='font-size:12px;color:var(--muted);margin-bottom:12px';
+    p.textContent='まだコメントがありません。';w.appendChild(p);
+  }
+  const addBtn=document.createElement('button');
+  addBtn.className='btn btn-o btn-sm';addBtn.textContent='＋ コメントを追加';
+  addBtn.onclick=()=>_startAddComment(b,w);
+  w.appendChild(addBtn);
+}
+
+function _mkCommentEditor(placeholder,value){
+  const wrap=document.createElement('div');
+  wrap.className='cmt-editor';
+  wrap.style.cssText='border:1.5px solid var(--ac);border-radius:10px;padding:12px;margin-top:10px;background:#fff8';
   const ta=document.createElement('textarea');
-  ta.style.cssText='width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;background:#fff;color:var(--text);outline:none;resize:vertical;min-height:120px;line-height:1.7;font-family:var(--sans)';
-  ta.id='bpcmt-ta';ta.placeholder='コメントを入力…';ta.value=b.comment||'';
-  ta.onfocus=()=>ta.style.borderColor='var(--ac)';
-  ta.onblur=()=>ta.style.borderColor='var(--bd)';
+  ta.style.cssText='width:100%;min-height:90px;border:none;outline:none;font-size:13px;line-height:1.8;font-family:var(--sans);resize:vertical;color:var(--text);background:transparent';
+  ta.placeholder=placeholder||'';ta.value=value||'';
   const row=document.createElement('div');
-  row.style.cssText='margin-top:10px;text-align:right';
-  const btn=document.createElement('button');
-  btn.className='btn btn-p btn-sm';btn.textContent='💾 保存';
-  btn.onclick=saveComment;row.appendChild(btn);
-  w.appendChild(note);w.appendChild(ta);w.appendChild(row);
+  row.style.cssText='margin-top:8px;display:flex;gap:8px;justify-content:flex-end';
+  wrap.appendChild(ta);wrap.appendChild(row);
+  return{wrap,ta,row};
 }
-function saveComment(){
-  const b=db.books.find(x=>x.id===_bpBid);if(!b)return;
-  b.comment=document.getElementById('bpcmt-ta').value;
-  saveLocalAndToGitHub('コメント更新');toast('✅ コメントを保存しました');
+
+function _startAddComment(b,w){
+  if(w.querySelector('.cmt-editor'))return;
+  const{wrap,ta,row}=_mkCommentEditor('コメントを入力…','');
+  const btnC=document.createElement('button');btnC.className='btn btn-sm';btnC.textContent='キャンセル';
+  btnC.onclick=()=>wrap.remove();
+  const btnS=document.createElement('button');btnS.className='btn btn-p btn-sm';btnS.textContent='💾 保存';
+  btnS.onclick=async()=>{
+    const text=ta.value.trim();if(!text){ta.focus();return;}
+    if(!b.comments)b.comments=[];
+    b.comments.push({id:'c_'+Date.now(),text,ts:new Date().toISOString()});
+    const ok=await saveAllToGitHub('コメント追加');
+    if(ok){_renderCommentList(b,w);toast('💬 保存しました');}
+  };
+  row.appendChild(btnC);row.appendChild(btnS);
+  w.appendChild(wrap);ta.focus();
 }
+
+function _startEditComment(b,cid,w){
+  if(w.querySelector('.cmt-editor'))w.querySelector('.cmt-editor').remove();
+  const c=b.comments.find(x=>x.id===cid);if(!c)return;
+  const item=w.querySelector(`[data-id="${cid}"]`);if(!item)return;
+  const{wrap,ta,row}=_mkCommentEditor('',c.text);
+  const btnC=document.createElement('button');btnC.className='btn btn-sm';btnC.textContent='キャンセル';
+  btnC.onclick=()=>wrap.remove();
+  const btnS=document.createElement('button');btnS.className='btn btn-p btn-sm';btnS.textContent='💾 更新';
+  btnS.onclick=async()=>{
+    const text=ta.value.trim();if(!text){ta.focus();return;}
+    c.text=text;c.ts=new Date().toISOString();
+    const ok=await saveAllToGitHub('コメント編集');
+    if(ok){_renderCommentList(b,w);toast('✅ 更新しました');}
+  };
+  row.appendChild(btnC);row.appendChild(btnS);
+  item.after(wrap);ta.focus();
+}
+
+async function saveComment(){}
 
 /* =============================================
    KEYWORD SEARCH
@@ -1205,35 +1284,37 @@ async function extractToc(file){
     if(!allItems.length)return[];
 
     // === [X] X座標列分離方式（2列レイアウト：左タイトル・右ページ番号）===
-    // ★ Bug Fix: 平均Xではなく「Xのギャップ」で左(タイトル番号)と右(ページ番号)を分離する
+    // ★ Bug Fix①: txtItems.length>=numItems.length 条件を廃止
+    //   （族番号・レッスン番号が多い教材でスキップされていた）
+    // ★ Bug Fix②: ページ列数字とタイトル列数字（レッスン番号等）を分離
+    //   → タイトル列の数字をテキスト行に含めることでレッスン番号が正しく表示される
     const numItems=allItems.filter(i=>i.isNum);
     const txtItems=allItems.filter(i=>!i.isNum);
-    if(numItems.length>=3&&txtItems.length>=numItems.length){
-      // 数字のX座標をソートしてギャップを検索
+    if(numItems.length>=3){
       const numXsSorted=[...numItems.map(i=>i.x)].sort((a,b)=>a-b);
       let pageXThreshold=null;
       for(let xi=1;xi<numXsSorted.length;xi++){
-        if(numXsSorted[xi]-numXsSorted[xi-1]>80){ // 80pt以上のギャップ → 2列と判断
+        if(numXsSorted[xi]-numXsSorted[xi-1]>80){
           pageXThreshold=(numXsSorted[xi]+numXsSorted[xi-1])/2;
           break;
         }
       }
-      // フォールバック: ギャップがなくても平均Xで判定
       if(pageXThreshold===null){
         const numAvgX=numItems.reduce((s,i)=>s+i.x,0)/numItems.length;
-        const txtAvgX=txtItems.reduce((s,i)=>s+i.x,0)/txtItems.length;
+        const txtAvgX=txtItems.length?txtItems.reduce((s,i)=>s+i.x,0)/txtItems.length:0;
         if(numAvgX>txtAvgX+40)pageXThreshold=txtAvgX+40;
       }
 
       if(pageXThreshold!==null){
-        // ページ番号候補（右列の数字のみ）
         const pageNumItems=numItems.filter(i=>i.x>=pageXThreshold);
-        // ★ LTを8に拡大（章タイトルとレッスン行の分離精度向上）
+        // タイトル列の数字（レッスン番号・族番号等）はテキスト行に含める
+        const titleNumItems=numItems.filter(i=>i.x<pageXThreshold);
+        const allTxtItems=[...txtItems,...titleNumItems];
         const LT=8;
-        txtItems.sort((a,b)=>a.page-b.page||a.y-b.y||a.x-b.x);
+        allTxtItems.sort((a,b)=>a.page-b.page||a.y-b.y||a.x-b.x);
         const tLines=[];
         let cur=null,curY=-999,curPg=-1;
-        for(const it of txtItems){
+        for(const it of allTxtItems){
           if(it.page!==curPg||Math.abs(it.y-curY)>LT){
             if(cur)tLines.push(cur);
             cur={text:it.s,x:it.x,y:it.y,page:it.page};
@@ -1245,25 +1326,24 @@ async function extractToc(file){
         }
         if(cur)tLines.push(cur);
 
-        // 各ページの右列数字をY座標でリスト化
         const numByPage={};
         pageNumItems.forEach(ni=>{
           if(!numByPage[ni.page])numByPage[ni.page]=[];
           numByPage[ni.page].push({y:ni.y,num:parseInt(ni.s),used:false});
         });
 
-        // 各テキスト行に最近傍のページ番号を対応付け（Y距離 15pt 以内）
+        // Y距離を25ptに拡大（わずかな行間ズレに対応）
         const result=[];
-        const Y_THRESH=15;
+        const Y_THRESH=25;
         for(const tl of tLines){
           const pnums=(numByPage[tl.page]||[]);
           let bestIdx=-1,bestDist=Infinity;
           pnums.forEach((pn,idx)=>{if(!pn.used){const d=Math.abs(pn.y-tl.y);if(d<bestDist){bestDist=d;bestIdx=idx;}}});
           if(bestIdx>=0&&bestDist<Y_THRESH){
             pnums[bestIdx].used=true;
-            result.push({title:tl.text.trim(),page:pnums[bestIdx].num-1,level:2}); // ★ ページ付き→レッスン
+            result.push({title:tl.text.trim(),page:pnums[bestIdx].num-1,level:2});
           }else{
-            result.push({title:tl.text.trim(),page:null,level:1}); // ★ ページなし→章見出し
+            result.push({title:tl.text.trim(),page:null,level:1});
           }
         }
         const valid=result.filter(r=>r.page!==null&&r.page>=0).length;
