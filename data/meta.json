@@ -1,6 +1,6 @@
 {
   "v": 3,
-  "updated": "2026-05-20T00:42:28.585Z",
+  "updated": "2026-05-20T01:14:49.954Z",
   "subjects": [
     {
       "id": "sj_1776844796256",
@@ -420,79 +420,79 @@
           "level": 2
         },
         {
-          "title": "10117 族元素①（ハロゲンの特徴）",
-          "page": null,
-          "level": 1
+          "title": "1 17 族元素①（ハロゲンの特徴）",
+          "page": 9,
+          "level": 2
         },
         {
-          "title": "12217 族元素②（塩素の性質とその製法）",
-          "page": null,
-          "level": 1
+          "title": "2 17 族元素②（塩素の性質とその製法）",
+          "page": 11,
+          "level": 2
         },
         {
-          "title": "16316 族元素①（酸素とオゾン）",
-          "page": null,
-          "level": 1
+          "title": "3 16 族元素①（酸素とオゾン）",
+          "page": 15,
+          "level": 2
         },
         {
-          "title": "20416 族元素②（硫化水素の発生と性質）",
-          "page": null,
-          "level": 1
+          "title": "4 16 族元素②（硫化水素の発生と性質）",
+          "page": 19,
+          "level": 2
         },
         {
-          "title": "22516 族元素③（硫黄とその化合物）",
-          "page": null,
-          "level": 1
+          "title": "5 16 族元素③（硫黄とその化合物）",
+          "page": 21,
+          "level": 2
         },
         {
-          "title": "26615 族元素①（窒素とその化合物）",
-          "page": null,
-          "level": 1
+          "title": "6 15 族元素①（窒素とその化合物）",
+          "page": 25,
+          "level": 2
         },
         {
-          "title": "30715 族元素②（リンとその化合物）",
-          "page": null,
-          "level": 1
+          "title": "7 15 族元素②（リンとその化合物）",
+          "page": 29,
+          "level": 2
         },
         {
-          "title": "32814 族元素①（炭素）",
-          "page": null,
-          "level": 1
+          "title": "8 14 族元素①（炭素）",
+          "page": 31,
+          "level": 2
         },
         {
-          "title": "36914 族元素②（ケイ素とその化合物）",
-          "page": null,
-          "level": 1
+          "title": "9 14 族元素②（ケイ素とその化合物）",
+          "page": 35,
+          "level": 2
         },
         {
-          "title": "4010気体の製法①（気体の製法・性質）",
-          "page": null,
-          "level": 1
+          "title": "10気体の製法① （気体の製法・性質）",
+          "page": 39,
+          "level": 2
         },
         {
-          "title": "4311気体の製法②（気体の乾燥・精製）",
-          "page": null,
-          "level": 1
+          "title": "11気体の製法② （気体の乾燥・精製）",
+          "page": 42,
+          "level": 2
         },
         {
-          "title": "4412気体の製法③（気体の推定）",
-          "page": null,
-          "level": 1
+          "title": "12気体の製法③ （気体の推定）",
+          "page": 43,
+          "level": 2
         },
         {
-          "title": "4813無機化学工業①（アンモニアの工業的製法）",
-          "page": null,
-          "level": 1
+          "title": "13無機化学工業① （アンモニアの工業的製法）",
+          "page": 47,
+          "level": 2
         },
         {
-          "title": "5214無機化学工業②（硝酸の工業的製法）",
-          "page": null,
-          "level": 1
+          "title": "14無機化学工業② （硝酸の工業的製法）",
+          "page": 51,
+          "level": 2
         },
         {
-          "title": "5415無機化学工業③（硫酸の工業的製法）",
-          "page": null,
-          "level": 1
+          "title": "15無機化学工業③ （硫酸の工業的製法）",
+          "page": 53,
+          "level": 2
         },
         {
           "title": "1 アルカリ金属とアルカリ土類金属",
@@ -505,9 +505,9 @@
           "level": 2
         },
         {
-          "title": "703両性金属",
-          "page": null,
-          "level": 1
+          "title": "3 両性金属",
+          "page": 69,
+          "level": 2
         },
         {
           "title": "1 銀の単体と化合物",
@@ -535,29 +535,29 @@
           "level": 2
         },
         {
-          "title": "941イオン反応（金属イオンの反応）",
-          "page": null,
-          "level": 1
+          "title": "1 イオン反応 （金属イオンの反応）",
+          "page": 93,
+          "level": 2
         },
         {
-          "title": "982陽イオンの分離",
-          "page": null,
-          "level": 1
+          "title": "2 陽イオンの分離",
+          "page": 97,
+          "level": 2
         },
         {
-          "title": "1023陰イオンの分離",
-          "page": null,
-          "level": 1
+          "title": "3 陰イオンの分離",
+          "page": 101,
+          "level": 2
         },
         {
-          "title": "1064イオンの分離操作",
-          "page": null,
-          "level": 1
+          "title": "4 イオンの分離操作",
+          "page": 105,
+          "level": 2
         },
         {
-          "title": "1085化合物の識別",
-          "page": null,
-          "level": 1
+          "title": "5 化合物の識別",
+          "page": 107,
+          "level": 2
         }
       ],
       "hasIdx": true,
