@@ -1,6 +1,6 @@
 {
   "v": 3,
-  "updated": "2026-05-20T01:14:49.954Z",
+  "updated": "2026-05-20T08:17:05.089Z",
   "subjects": [
     {
       "id": "sj_1776844796256",
@@ -420,6 +420,12 @@
           "level": 2
         },
         {
+          "title": "───────",
+          "page": null,
+          "level": 1,
+          "_divider": true
+        },
+        {
           "title": "1 17 族元素①（ハロゲンの特徴）",
           "page": 9,
           "level": 2
@@ -495,6 +501,12 @@
           "level": 2
         },
         {
+          "title": "───────",
+          "page": null,
+          "level": 1,
+          "_divider": true
+        },
+        {
           "title": "1 アルカリ金属とアルカリ土類金属",
           "page": 59,
           "level": 2
@@ -508,6 +520,12 @@
           "title": "3 両性金属",
           "page": 69,
           "level": 2
+        },
+        {
+          "title": "───────",
+          "page": null,
+          "level": 1,
+          "_divider": true
         },
         {
           "title": "1 銀の単体と化合物",
@@ -533,6 +551,12 @@
           "title": "5 銅の単体と化合物",
           "page": 87,
           "level": 2
+        },
+        {
+          "title": "───────",
+          "page": null,
+          "level": 1,
+          "_divider": true
         },
         {
           "title": "1 イオン反応 （金属イオンの反応）",
@@ -562,7 +586,8 @@
       ],
       "hasIdx": true,
       "pageCount": 118,
-      "comment": ""
+      "comment": "",
+      "comments": []
     }
   ]
 }
